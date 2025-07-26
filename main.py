@@ -21,6 +21,7 @@ def main(page: ft.Page):
     characters: list[Character] = []
     locations: list[Location] = []
     factions: list[Faction] = []
+    districts: list[District] = [] # Added districts list
     lore_history_text = ""
     bulletin_board_text = ""
     timeline_text = ""
@@ -30,6 +31,7 @@ def main(page: ft.Page):
     CHARACTERS_FILE = os.path.join(DATA_DIR, "characters.json")
     LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
     FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
+    DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json") # Added districts file path
     LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
     BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.txt")
     TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.txt")
@@ -83,6 +85,122 @@ def main(page: ft.Page):
                         expertise=item.get('expertise', []), # Default to empty list
                         portrayalNotes=item.get('portrayalNotes')
                     ))
+
+    def save_locations():
+        with open(LOCATIONS_FILE, "w") as f:
+            json.dump([loc.__dict__ for loc in locations], f, indent=4)
+
+    def load_locations():
+        if os.path.exists(LOCATIONS_FILE):
+            with open(LOCATIONS_FILE, "r") as f:
+                data = json.load(f)
+                locations.clear()
+                for item in data:
+                    locations.append(Location(
+                        id=item['id'],
+                        name=item['name'],
+                        description=item['description'],
+                        type=item.get('type'),
+                        district=item.get('district'),
+                        owningFaction=item.get('owningFaction'),
+                        dangerLevel=item.get('dangerLevel'),
+                        population=item.get('population'),
+                        image=item.get('image'),
+                        keyCharacters=item.get('keyCharacters', []), # Default to empty list
+                        associatedItems=item.get('associatedItems', []), # Default to empty list
+                        accessibility=item.get('accessibility'),
+                        hidden=item.get('hidden'),
+                        internalLogicNotes=item.get('internalLogicNotes'),
+                        clues=item.get('clues', []) # Default to empty list
+                    ))
+
+    def save_factions():
+        with open(FACTIONS_FILE, "w") as f:
+            json.dump([fac.__dict__ for fac in factions], f, indent=4)
+
+    def load_factions():
+        if os.path.exists(FACTIONS_FILE):
+            with open(FACTIONS_FILE, "r") as f:
+                data = json.load(f)
+                factions.clear()
+                for item in data:
+                    factions.append(Faction(
+                        id=item['id'],
+                        name=item['name'],
+                        description=item['description'],
+                        archetype=item.get('archetype'),
+                        ideology=item.get('ideology'),
+                        headquarters=item.get('headquarters'),
+                        resources=item.get('resources', []), # Default to empty list
+                        image=item.get('image'),
+                        allyFactions=item.get('allyFactions', []), # Default to empty list
+                        enemyFactions=item.get('enemyFactions', []), # Default to empty list
+                        members=item.get('members', []), # Default to empty list
+                        influence=item.get('influence'),
+                        publicPerception=item.get('publicPerception')
+                    ))
+
+    def save_districts(): # Added save_districts function
+        with open(DISTRICTS_FILE, "w") as f:
+            json.dump([dist.__dict__ for dist in districts], f, indent=4)
+
+    def load_districts(): # Added load_districts function
+        if os.path.exists(DISTRICTS_FILE):
+            with open(DISTRICTS_FILE, "r") as f:
+                data = json.load(f)
+                districts.clear()
+                for item in data:
+                    districts.append(District(
+                        id=item['id'],
+                        name=item['name'],
+                        description=item['description'],
+                        image=item.get('image'),
+                        wealthClass=item.get('wealthClass'),
+                        atmosphere=item.get('atmosphere'),
+                        populationDensity=item.get('populationDensity'),
+                        notableFeatures=item.get('notableFeatures', []), # Default to empty list
+                        dominantFaction=item.get('dominantFaction'),
+                        keyLocations=item.get('keyLocations', []) # Default to empty list
+                    ))
+
+    def save_lore_history():
+        with open(LORE_HISTORY_FILE, "w") as f:
+            f.write(lore_history_text)
+
+    def load_lore_history():
+        nonlocal lore_history_text
+        if os.path.exists(LORE_HISTORY_FILE):
+            with open(LORE_HISTORY_FILE, "r") as f:
+                lore_history_text = f.read()
+
+    def save_bulletin_board():
+        with open(BULLETIN_BOARD_FILE, "w") as f:
+            f.write(bulletin_board_text)
+
+    def load_bulletin_board():
+        nonlocal bulletin_board_text
+        if os.path.exists(BULLETIN_BOARD_FILE):
+            with open(BULLETIN_BOARD_FILE, "r") as f:
+                bulletin_board_text = f.read()
+
+    def save_timeline():
+        with open(TIMELINE_FILE, "w") as f:
+            f.write(timeline_text)
+
+    def load_timeline():
+        nonlocal timeline_text
+        if os.path.exists(TIMELINE_FILE):
+            with open(TIMELINE_FILE, "r") as f:
+                timeline_text = f.read()
+
+    # Load all data on startup
+    load_characters()
+    load_locations()
+    load_factions()
+    load_districts() # Load districts on startup
+    load_lore_history()
+    load_bulletin_board()
+    load_timeline()
 
     # --- Character Detail View ---
     def create_character_detail_view(character: Character):
@@ -343,98 +461,91 @@ def main(page: ft.Page):
             expand=True
         )
 
-    # --- Save/Load Functions for other data types ---
-    def save_locations():
-        with open(LOCATIONS_FILE, "w") as f:
-            json.dump([loc.__dict__ for loc in locations], f, indent=4)
+    # --- District Detail View ---
+    def create_district_detail_view(district: District):
+        # Create TextField controls for each editable field
+        name_field = ft.TextField(label="Name", value=district.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        description_field = ft.TextField(label="Description", value=district.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        wealth_class_field = ft.Dropdown(
+            label="Wealth Class",
+            value=district.wealthClass,
+            options=[ft.dropdown.Option(wc) for wc in WealthClass.__args__],
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+        )
+        atmosphere_field = ft.TextField(label="Atmosphere", value=district.atmosphere, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        population_density_field = ft.Dropdown(
+            label="Population Density",
+            value=district.populationDensity,
+            options=[ft.dropdown.Option("Sparse"), ft.dropdown.Option("Moderate"), ft.dropdown.Option("Dense"), ft.dropdown.Option("Crowded")],
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+        )
+        dominant_faction_field = ft.TextField(label="Dominant Faction", value=district.dominantFaction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
 
-    def load_locations():
-        if os.path.exists(LOCATIONS_FILE):
-            with open(LOCATIONS_FILE, "r") as f:
-                data = json.load(f)
-                locations.clear()
-                for item in data:
-                    locations.append(Location(
-                        id=item['id'],
-                        name=item['name'],
-                        description=item['description'],
-                        type=item.get('type'),
-                        district=item.get('district'),
-                        owningFaction=item.get('owningFaction'),
-                        dangerLevel=item.get('dangerLevel'),
-                        population=item.get('population'),
-                        image=item.get('image'),
-                        keyCharacters=item.get('keyCharacters', []), # Default to empty list
-                        associatedItems=item.get('associatedItems', []), # Default to empty list
-                        accessibility=item.get('accessibility'),
-                        hidden=item.get('hidden'),
-                        internalLogicNotes=item.get('internalLogicNotes'),
-                        clues=item.get('clues', []) # Default to empty list
-                    ))
+        def save_district_details(e):
+            district.name = name_field.value
+            district.description = description_field.value
+            district.wealthClass = wealth_class_field.value if wealth_class_field.value else None
+            district.atmosphere = atmosphere_field.value
+            district.populationDensity = population_density_field.value if population_density_field.value else None
+            district.dominantFaction = dominant_faction_field.value
 
-    def save_factions():
-        with open(FACTIONS_FILE, "w") as f:
-            json.dump([fac.__dict__ for fac in factions], f, indent=4)
+            # Update the district list view to reflect name changes
+            districts_list_view.controls.clear()
+            for dist in districts:
+                districts_list_view.controls.append(ft.Text(dist.name, color="#FFFFFF", on_click=select_district))
+            save_districts() # Save districts after modification
+            page.update()
 
-    def load_factions():
-        if os.path.exists(FACTIONS_FILE):
-            with open(FACTIONS_FILE, "r") as f:
-                data = json.load(f)
-                factions.clear()
-                for item in data:
-                    factions.append(Faction(
-                        id=item['id'],
-                        name=item['name'],
-                        description=item['description'],
-                        archetype=item.get('archetype'),
-                        ideology=item.get('ideology'),
-                        headquarters=item.get('headquarters'),
-                        resources=item.get('resources', []), # Default to empty list
-                        image=item.get('image'),
-                        allyFactions=item.get('allyFactions', []), # Default to empty list
-                        enemyFactions=item.get('enemyFactions', []), # Default to empty list
-                        members=item.get('members', []), # Default to empty list
-                        influence=item.get('influence'),
-                        publicPerception=item.get('publicPerception')
-                    ))
+        def delete_district(e):
+            districts.remove(district)
+            districts_list_view.controls.clear()
+            for dist in districts:
+                districts_list_view.controls.append(ft.Text(dist.name, color="#FFFFFF", on_click=select_district))
+            district_detail_container.content = ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")])
+            save_districts() # Save districts after modification
+            page.update()
 
-    def save_lore_history():
-        with open(LORE_HISTORY_FILE, "w") as f:
-            f.write(lore_history_text)
-
-    def load_lore_history():
-        nonlocal lore_history_text
-        if os.path.exists(LORE_HISTORY_FILE):
-            with open(LORE_HISTORY_FILE, "r") as f:
-                lore_history_text = f.read()
-
-    def save_bulletin_board():
-        with open(BULLETIN_BOARD_FILE, "w") as f:
-            f.write(bulletin_board_text)
-
-    def load_bulletin_board():
-        nonlocal bulletin_board_text
-        if os.path.exists(BULLETIN_BOARD_FILE):
-            with open(BULLETIN_BOARD_FILE, "r") as f:
-                bulletin_board_text = f.read()
-
-    def save_timeline():
-        with open(TIMELINE_FILE, "w") as f:
-            f.write(timeline_text)
-
-    def load_timeline():
-        nonlocal timeline_text
-        if os.path.exists(TIMELINE_FILE):
-            with open(TIMELINE_FILE, "r") as f:
-                timeline_text = f.read()
-
-    # Load all data on startup
-    load_characters()
-    load_locations()
-    load_factions()
-    load_lore_history()
-    load_bulletin_board()
-    load_timeline()
+        return ft.Column(
+            [
+                ft.Text(f"District Details: {district.name}", color="#FFFFFF", size=20),
+                name_field,
+                description_field,
+                wealth_class_field,
+                atmosphere_field,
+                population_density_field,
+                dominant_faction_field,
+                ft.Row(
+                    [
+                        ft.ElevatedButton(
+                            text="Save Changes",
+                            icon=ft.Icons.SAVE,
+                            bgcolor="#64B5F6",
+                            color="#FFFFFF",
+                            on_click=save_district_details
+                        ),
+                        ft.ElevatedButton(
+                            text="Delete District",
+                            icon=ft.Icons.DELETE,
+                            bgcolor="#FF5252", # Red for delete
+                            color="#FFFFFF",
+                            on_click=delete_district
+                        ),
+                    ]
+                )
+            ],
+            scroll=ft.ScrollMode.ADAPTIVE,
+            expand=True
+        )
 
     # --- Content Views ---
     def create_characters_view():
@@ -712,6 +823,95 @@ def main(page: ft.Page):
             padding=20
         )
 
+    def create_districts_view(): # Added create_districts_view
+        district_name_input = ft.TextField(
+            label="District Name",
+            hint_text="Enter district name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        districts_list_view = ft.ListView(
+            expand=True,
+            spacing=10,
+            padding=20,
+            controls=[ft.Text(dist.name, color="#FFFFFF", on_click=select_district) for dist in districts] # Populate on load
+        )
+
+        district_detail_container = ft.Container(
+            content=ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")]), # Placeholder
+            expand=True,
+            padding=20
+        )
+
+        def select_district(e):
+            selected_dist_name = e.control.text
+            selected_district = next((dist for dist in districts if dist.name == selected_dist_name), None)
+            if selected_district:
+                district_detail_container.content = create_district_detail_view(selected_district)
+                page.update()
+
+        def add_district(e):
+            if district_name_input.value:
+                new_district = District(
+                    id=str(uuid.uuid4()),
+                    name=district_name_input.value,
+                    description="", # Placeholder
+                    wealthClass=WealthClass.__args__[0], # Placeholder
+                    atmosphere="", # Placeholder
+                    populationDensity="Sparse", # Placeholder
+                    dominantFaction="", # Placeholder
+                )
+                districts.append(new_district)
+                districts_list_view.controls.append(ft.Text(new_district.name, color="#FFFFFF", on_click=select_district))
+                district_name_input.value = ""
+                save_districts() # Save districts after adding
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Districts Management", color="#FFFFFF", size=20),
+                    ft.Text("List of districts and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            district_name_input,
+                            ft.ElevatedButton(
+                                text="Add District",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6", # Light blue button
+                                color="#FFFFFF",
+                                on_click=add_district
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=districts_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            district_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
     def create_lore_history_view():
         lore_history_text_field = ft.TextField(
             label="Lore and World History",
@@ -851,6 +1051,7 @@ def main(page: ft.Page):
     load_characters()
     load_locations()
     load_factions()
+    load_districts() # Load districts on startup
     load_lore_history()
     load_bulletin_board()
     load_timeline()
@@ -864,6 +1065,7 @@ def main(page: ft.Page):
             ft.IconButton(icon=ft.Icons.PERSON, tooltip="Characters", on_click=lambda e: update_main_content(create_characters_view())),
             ft.IconButton(icon=ft.Icons.LOCATION_ON, tooltip="Locations", on_click=lambda e: update_main_content(create_locations_view())),
             ft.IconButton(icon=ft.Icons.GROUPS, tooltip="Factions", on_click=lambda e: update_main_content(create_factions_view())),
+            ft.IconButton(icon=ft.Icons.HOME, tooltip="Districts", on_click=lambda e: update_main_content(create_districts_view())),
             ft.IconButton(icon=ft.Icons.HISTORY, tooltip="Lore & History", on_click=lambda e: update_main_content(create_lore_history_view())),
         ],
         spacing=10,
@@ -891,6 +1093,7 @@ def main(page: ft.Page):
                 ft.IconButton(icon=ft.Icons.PERSON, tooltip="Characters", on_click=lambda e: update_main_content(create_characters_view())),
                 ft.IconButton(icon=ft.Icons.LOCATION_ON, tooltip="Locations", on_click=lambda e: update_main_content(create_locations_view())),
                 ft.IconButton(icon=ft.Icons.GROUPS, tooltip="Factions", on_click=lambda e: update_main_content(create_factions_view())),
+                ft.IconButton(icon=ft.Icons.HOME, tooltip="Districts", on_click=lambda e: update_main_content(create_districts_view())),
                 ft.IconButton(icon=ft.Icons.HISTORY, tooltip="Lore & History", on_click=lambda e: update_main_content(create_lore_history_view())),
             ])
             update_main_content(create_characters_view()) # Default to Characters view
