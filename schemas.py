@@ -217,7 +217,7 @@ class CaseLocation:
 @dataclass
 class Clue:
     # Required fields (no default value) must come first.
-    clueId: str
+    id: str # Changed from clueId to id for consistency
     criticalClue: bool
     redHerring: bool
     isLie: bool

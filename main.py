@@ -1,5 +1,5 @@
 import flet as ft
-from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction, ValidationResult, CaseMeta, Item, TimelineEvent # Import all necessary dataclasses and enums
+from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction, ValidationResult, CaseMeta, Item, TimelineEvent, Clue # Import all necessary dataclasses and enums
 import uuid # For generating unique IDs
 import json # For JSON serialization
 import os # For path operations
@@ -23,6 +23,7 @@ def main(page: ft.Page):
     factions: list[Faction] = []
     districts: list[District] = []
     items: list[Item] = []
+    clues: list[Clue] = [] # Added clues list
     case_meta: CaseMeta = CaseMeta(victim="", culprit="", crimeScene="", murderWeapon="", coreMysterySolutionDetails="") # Initialize CaseMeta
     lore_history_text = ""
     bulletin_board_nodes = [] # Changed to store node data
@@ -36,6 +37,7 @@ def main(page: ft.Page):
     FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
     DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json")
     ITEMS_FILE = os.path.join(DATA_DIR, "items.json")
+    CLUES_FILE = os.path.join(DATA_DIR, "clues.json") # Added clues file path
     CASE_META_FILE = os.path.join(DATA_DIR, "case_meta.json") # Added case meta file path
     LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
     BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.json") # Changed to JSON
@@ -197,6 +199,39 @@ def main(page: ft.Page):
                         significance=item_data.get('significance')
                     ))
 
+    def save_clues(): # Added save_clues function
+        with open(CLUES_FILE, "w") as f:
+            json.dump([clue.__dict__ for clue in clues], f, indent=4)
+
+    def load_clues(): # Added load_clues function
+        nonlocal clues
+        if os.path.exists(CLUES_FILE):
+            with open(CLUES_FILE, "r") as f:
+                data = json.load(f)
+                clues.clear()
+                for item in data:
+                    clues.append(Clue(
+                        id=item['id'],
+                        criticalClue=item['criticalClue'],
+                        redHerring=item['redHerring'],
+                        isLie=item['isLie'],
+                        source=item['source'],
+                        clueSummary=item['clueSummary'],
+                        knowledgeLevel=item['knowledgeLevel'],
+                        discoveryPath=item.get('discoveryPath', []), # Default to empty list
+                        presentationMethod=item.get('presentationMethod', []), # Default to empty list
+                        characterImplicated=item.get('characterImplicated'),
+                        redHerringType=item.get('redHerringType'),
+                        mechanismOfMisdirection=item.get('mechanismOfMisdirection'),
+                        debunkingClue=item.get('debunkingClue'),
+                        dependencies=item.get('dependencies', []), # Default to empty list
+                        requiredActionsForDiscovery=item.get('requiredActionsForDiscovery', []), # Default to empty list
+                        revealsUnlocks=item.get('revealsUnlocks', []), # Default to empty list
+                        associatedItem=item.get('associatedItem'),
+                        associatedLocation=item.get('associatedLocation'),
+                        associatedCharacter=item.get('associatedCharacter')
+                    ))
+
     def save_case_meta(): # Added save_case_meta function
         with open(CASE_META_FILE, "w") as f:
             json.dump(case_meta.__dict__, f, indent=4)
@@ -330,12 +365,97 @@ def main(page: ft.Page):
         check_duplicate_ids(items, "Item")
         check_missing_required_fields(items, "Item", ["name", "description", "possibleMeans", "possibleMotive", "possibleOpportunity", "cluePotential", "value", "condition"])
 
+        # Run checks for Clues
+        check_duplicate_ids(clues, "Clue")
+        check_missing_required_fields(clues, "Clue", ["id", "criticalClue", "redHerring", "isLie", "source", "clueSummary", "knowledgeLevel"])
+
         # Run checks for CaseMeta
         check_missing_required_fields([case_meta], "CaseMeta", ["victim", "culprit", "crimeScene", "murderWeapon", "coreMysterySolutionDetails"])
 
         # Run checks for Timeline Events
         check_duplicate_ids(timeline_events, "TimelineEvent")
         check_missing_required_fields(timeline_events, "TimelineEvent", ["name", "description", "timestamp"])
+
+        # Tier 2: Logical Consistency (Errors)
+        # Orphan Clues (simplified: check if victim, culprit, crimeScene, murderWeapon exist as IDs)
+        all_asset_ids = set([c.id for c in characters] + [l.id for l in locations] + [f.id for f in factions] + [d.id for d in districts] + [i.id for i in items])
+        if case_meta.victim and case_meta.victim not in all_asset_ids:
+            validation_results.append(ValidationResult(message=f"CaseMeta: Victim ID '{case_meta.victim}' not found in assets.", type="error", asset_type="CaseMeta", field_name="victim"))
+        if case_meta.culprit and case_meta.culprit not in all_asset_ids:
+            validation_results.append(ValidationResult(message=f"CaseMeta: Culprit ID '{case_meta.culprit}' not found in assets.", type="error", asset_type="CaseMeta", field_name="culprit"))
+        if case_meta.crimeScene and case_meta.crimeScene not in all_asset_ids:
+            validation_results.append(ValidationResult(message=f"CaseMeta: Crime Scene ID '{case_meta.crimeScene}' not found in assets.", type="error", asset_type="CaseMeta", field_name="crimeScene"))
+        if case_meta.murderWeapon and case_meta.murderWeapon not in all_asset_ids:
+            validation_results.append(ValidationResult(message=f"CaseMeta: Murder Weapon ID '{case_meta.murderWeapon}' not found in assets.", type="error", asset_type="CaseMeta", field_name="murderWeapon"))
+
+        # Basic Chronology check for Timeline Events
+        # Convert timestamps to comparable format (e.g., datetime objects) for proper comparison
+        # For simplicity, assuming timestamps are sortable strings for now.
+        sorted_timeline = sorted(timeline_events, key=lambda x: x.timestamp)
+        for i in range(len(sorted_timeline) - 1):
+            if sorted_timeline[i].timestamp > sorted_timeline[i+1].timestamp:
+                validation_results.append(ValidationResult(
+                    message=f"Timeline Event '{sorted_timeline[i+1].name}' (at {sorted_timeline[i+1].timestamp}) is chronologically before '{sorted_timeline[i].name}' (at {sorted_timeline[i].timestamp}).",
+                    type="error",
+                    asset_id=sorted_timeline[i+1].id,
+                    asset_type="TimelineEvent",
+                    field_name="timestamp"
+                ))
+
+        # Circular Logic (direct allies/enemies)
+        for char in characters:
+            for ally_id in char.allies:
+                ally_char = next((c for c in characters if c.id == ally_id), None)
+                if ally_char and char.id in ally_char.allies:
+                    validation_results.append(ValidationResult(
+                        message=f"Circular alliance detected between {char.fullName} and {ally_char.fullName}.",
+                        type="error",
+                        asset_id=char.id,
+                        asset_type="Character",
+                        field_name="allies"
+                    ))
+            for enemy_id in char.enemies:
+                enemy_char = next((c for c in characters if c.id == enemy_id), None)
+                if enemy_char and char.id in enemy_char.enemies:
+                    validation_results.append(ValidationResult(
+                        message=f"Circular enmity detected between {char.fullName} and {enemy_char.fullName}.",
+                        type="error",
+                        asset_id=char.id,
+                        asset_type="Character",
+                        field_name="enemies"
+                    ))
+
+        # Undebunkable Lies
+        for clue in clues:
+            if clue.isLie and not clue.debunkingClue:
+                validation_results.append(ValidationResult(
+                    message=f"Undebunkable lie detected for clue '{clue.clueSummary}'. All lies must have a debunking clue.",
+                    type="error",
+                    asset_id=clue.id,
+                    asset_type="Clue",
+                    field_name="debunkingClue"
+                ))
+
+        # Tier 3: Playability & Narrative Craft (Warnings)
+        # Plausible Suspects
+        killer_suspects = [char for char in characters if char.killerLikelihood > 50]
+        if len(killer_suspects) < 2:
+            validation_results.append(ValidationResult(
+                message="Consider adding more plausible killer suspects (characters with killerLikelihood > 50).",
+                type="warning",
+                asset_type="Character",
+                field_name="killerLikelihood"
+            ))
+
+        # Red Herring Sufficiency
+        red_herring_clues = [clue for clue in clues if clue.redHerring]
+        if len(red_herring_clues) < 2:
+            validation_results.append(ValidationResult(
+                message="Consider adding more red herring clues for narrative depth.",
+                type="warning",
+                asset_type="Clue",
+                field_name="redHerring"
+            ))
 
         # Update Validator UI
         update_validator_ui()
@@ -383,7 +503,7 @@ def main(page: ft.Page):
         core_mystery_solution_details_field = ft.TextField(label="Core Mystery Solution Details", value=case_meta.coreMysterySolutionDetails, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         murder_weapon_hidden_field = ft.Checkbox(label="Murder Weapon Hidden", value=case_meta.murderWeaponHidden, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
         means_clue_field = ft.TextField(label="Means Clue", value=case_meta.meansClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        motive_clue_field = ft.TextField(label="Motive Clue", value=case_meta.motiveClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        motive_clue_field = ft.TextField(label="Motive Cl", value=case_meta.motiveClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         opportunity_clue_field = ft.TextField(label="Opportunity Clue", value=case_meta.opportunityClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         narrative_viewpoint_field = ft.Dropdown(
             label="Narrative Viewpoint",
@@ -1047,6 +1167,744 @@ def main(page: ft.Page):
             expand=True
         )
 
+    # --- Clue Detail View ---
+    def create_clue_detail_view(clue: Clue, clues_list_view, clue_detail_container, select_clue):
+        clue_summary_field = ft.TextField(label="Clue Summary", value=clue.clueSummary, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        source_field = ft.TextField(label="Source", value=clue.source, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        critical_clue_field = ft.Checkbox(label="Critical Clue", value=clue.criticalClue, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
+        red_herring_field = ft.Checkbox(label="Red Herring", value=clue.redHerring, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
+        is_lie_field = ft.Checkbox(label="Is Lie", value=clue.isLie, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
+        knowledge_level_field = ft.Dropdown(
+            label="Knowledge Level",
+            value=clue.knowledgeLevel,
+            options=[ft.dropdown.Option("Sleuth Only"), ft.dropdown.Option("Reader Only"), ft.dropdown.Option("Both"), ft.dropdown.Option("Neither (Off-Page)")],
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+        )
+        debunking_clue_field = ft.TextField(label="Debunking Clue ID", value=clue.debunkingClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        character_implicated_field = ft.TextField(label="Character Implicated ID", value=clue.characterImplicated, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        red_herring_type_field = ft.Dropdown(
+            label="Red Herring Type",
+            value=clue.redHerringType,
+            options=[ft.dropdown.Option("Decoy Suspect"), ft.dropdown.Option("Misleading Object"), ft.dropdown.Option("False Alibi"), ft.dropdown.Option("Misleading Dialogue")],
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+        )
+        mechanism_of_misdirection_field = ft.TextField(label="Mechanism of Misdirection", value=clue.mechanismOfMisdirection, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        associated_item_field = ft.TextField(label="Associated Item ID", value=clue.associatedItem, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        associated_location_field = ft.TextField(label="Associated Location ID", value=clue.associatedLocation, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        associated_character_field = ft.TextField(label="Associated Character ID", value=clue.associatedCharacter, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+
+        def save_clue_details(e):
+            clue.clueSummary = clue_summary_field.value
+            clue.source = source_field.value
+            clue.criticalClue = critical_clue_field.value
+            clue.redHerring = red_herring_field.value
+            clue.isLie = is_lie_field.value
+            clue.knowledgeLevel = knowledge_level_field.value
+            clue.debunkingClue = debunking_clue_field.value
+            clue.characterImplicated = character_implicated_field.value
+            clue.redHerringType = red_herring_type_field.value
+            clue.mechanismOfMisdirection = mechanism_of_misdirection_field.value
+            clue.associatedItem = associated_item_field.value
+            clue.associatedLocation = associated_location_field.value
+            clue.associatedCharacter = associated_character_field.value
+
+            clues_list_view.controls.clear()
+            for clue_obj in clues:
+                clues_list_view.controls.append(ft.GestureDetector(content=ft.Text(clue_obj.clueSummary, color="#FFFFFF"), on_tap=lambda e, clue=clue_obj: select_clue(clue))) # Use GestureDetector
+            save_clues()
+            run_validation()
+            page.update()
+
+        def delete_clue(e):
+            clues.remove(clue)
+            clues_list_view.controls.clear()
+            for clue_obj in clues:
+                clues_list_view.controls.append(ft.GestureDetector(content=ft.Text(clue_obj.clueSummary, color="#FFFFFF"), on_tap=lambda e, clue=clue_obj: select_clue(clue))) # Use GestureDetector
+            clue_detail_container.content = ft.Column([ft.Text("Select a clue to view details", color="#9E9E9E")])
+            save_clues()
+            run_validation()
+            page.update()
+
+        return ft.Column(
+            [
+                ft.Text(f"Clue Details: {clue.clueSummary}", color="#FFFFFF", size=20),
+                clue_summary_field,
+                source_field,
+                critical_clue_field,
+                red_herring_field,
+                is_lie_field,
+                knowledge_level_field,
+                debunking_clue_field,
+                character_implicated_field,
+                red_herring_type_field,
+                mechanism_of_misdirection_field,
+                associated_item_field,
+                associated_location_field,
+                associated_character_field,
+                ft.Row(
+                    [
+                        ft.ElevatedButton(
+                            text="Save Changes",
+                            icon=ft.Icons.SAVE,
+                            bgcolor="#64B5F6",
+                            color="#FFFFFF",
+                            on_click=save_clue_details
+                        ),
+                        ft.ElevatedButton(
+                            text="Delete Clue",
+                            icon=ft.Icons.DELETE,
+                            bgcolor="#FF5252", # Red for delete
+                            color="#FFFFFF",
+                            on_click=delete_clue
+                        ),
+                    ]
+                )
+            ],
+            scroll=ft.ScrollMode.ADAPTIVE,
+            expand=True
+        )
+
+    # --- Content Views ---
+    # Declare these outside to make them accessible to save/delete functions
+    characters_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    character_detail_container = ft.Container(content=ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    locations_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    location_detail_container = ft.Container(content=ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    factions_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    faction_detail_container = ft.Container(content=ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    districts_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    district_detail_container = ft.Container(content=ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    items_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    item_detail_container = ft.Container(content=ft.Column([ft.Text("Select an item to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    clues_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    clue_detail_container = ft.Container(content=ft.Column([ft.Text("Select a clue to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    timeline_events_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    timeline_event_detail_container = ft.Container(content=ft.Column([ft.Text("Select a timeline event to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    def select_character(char):
+        character_detail_container.content = create_character_detail_view(char, characters_list_view, character_detail_container, select_character)
+        page.update()
+
+    def select_location(loc):
+        location_detail_container.content = create_location_detail_view(loc, locations_list_view, location_detail_container, select_location)
+        page.update()
+
+    def select_faction(fac):
+        faction_detail_container.content = create_faction_detail_view(fac, factions_list_view, faction_detail_container, select_faction)
+        page.update()
+
+    def select_district(dist):
+        district_detail_container.content = create_district_detail_view(dist, districts_list_view, district_detail_container, select_district)
+        page.update()
+
+    def select_item(item):
+        item_detail_container.content = create_item_detail_view(item, items_list_view, item_detail_container, select_item)
+        page.update()
+
+    def select_clue(clue):
+        clue_detail_container.content = create_clue_detail_view(clue, clues_list_view, clue_detail_container, select_clue)
+        page.update()
+
+    def select_timeline_event(event):
+        timeline_event_detail_container.content = create_timeline_event_detail_view(event, timeline_events_list_view, timeline_event_detail_container, select_timeline_event)
+        page.update()
+
+    def create_characters_view():
+        character_name_input = ft.TextField(
+            label="Character Name",
+            hint_text="Enter character's full name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        characters_list_view.controls.clear()
+        for char in characters:
+            characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(char.fullName, color="#FFFFFF"), on_tap=lambda e, char=char: select_character(char)))
+
+        def add_character(e):
+            if character_name_input.value:
+                # Create a new Character object with a unique ID and placeholder values
+                new_character = Character(
+                    id=str(uuid.uuid4()),
+                    fullName=character_name_input.value,
+                    biography="", # Placeholder
+                    personality="", # Placeholder
+                    alignment=Alignment.__args__[0], # Use first value from Literal as default
+                    honesty=50, # Placeholder
+                    victimLikelihood=50, # Placeholder
+                    killerLikelihood=50, # Placeholder
+                    gender=Gender.__args__[0], # Use first value from Literal as default
+                    wealthClass=WealthClass.__args__[0] # Use first value from Literal as default
+                )
+                characters.append(new_character)
+                characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_character.fullName, color="#FFFFFF"), on_tap=lambda e, char=new_character: select_character(char))) # Use GestureDetector
+                character_name_input.value = ""
+                save_characters() # Save characters after adding
+                run_validation() # Run validation after modification
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Characters Management", color="#FFFFFF", size=20),
+                    ft.Text("List of characters and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            character_name_input,
+                            ft.ElevatedButton(
+                                text="Add Character",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6", # Light blue button
+                                color="#FFFFFF",
+                                on_click=add_character
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=characters_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            character_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_locations_view():
+        location_name_input = ft.TextField(
+            label="Location Name",
+            hint_text="Enter location name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        locations_list_view.controls.clear()
+        for loc in locations:
+            locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(loc.name, color="#FFFFFF"), on_tap=lambda e, loc=loc: select_location(loc)))
+
+        def add_location(e):
+            if location_name_input.value:
+                new_location = Location(
+                    id=str(uuid.uuid4()),
+                    name=location_name_input.value,
+                    description="", # Placeholder
+                    type="", # Placeholder
+                    district="", # Placeholder
+                    owningFaction="", # Placeholder
+                    dangerLevel=1, # Placeholder
+                    population=0, # Placeholder
+                    accessibility="Public", # Placeholder
+                    hidden=False, # Placeholder
+                    internalLogicNotes="", # Placeholder
+                )
+                locations.append(new_location)
+                locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_location.name, color="#FFFFFF"), on_tap=lambda e, loc=new_location: select_location(loc))) # Use GestureDetector
+                location_name_input.value = ""
+                save_locations() # Save locations after adding
+                run_validation() # Run validation after modification
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Locations Management", color="#FFFFFF", size=20),
+                    ft.Text("List of locations and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            location_name_input,
+                            ft.ElevatedButton(
+                                text="Add Location",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6", # Light blue button
+                                color="#FFFFFF",
+                                on_click=add_location
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=locations_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            location_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_factions_view():
+        faction_name_input = ft.TextField(
+            label="Faction Name",
+            hint_text="Enter faction name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        factions_list_view.controls.clear()
+        for fac in factions:
+            factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(fac.name, color="#FFFFFF"), on_tap=lambda e, fac=fac: select_faction(fac)))
+
+        def add_faction(e):
+            if faction_name_input.value:
+                new_faction = Faction(
+                    id=str(uuid.uuid4()),
+                    name=faction_name_input.value,
+                    description="", # Placeholder
+                    archetype="", # Placeholder
+                    ideology="", # Placeholder
+                    headquarters="", # Placeholder
+                    publicPerception="", # Placeholder
+                )
+                factions.append(new_faction)
+                factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_faction.name, color="#FFFFFF"), on_tap=lambda e, fac=new_faction: select_faction(fac))) # Use GestureDetector
+                faction_name_input.value = ""
+                save_factions() # Save factions after adding
+                run_validation() # Run validation after modification
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Factions Management", color="#FFFFFF", size=20),
+                    ft.Text("List of factions and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            faction_name_input,
+                            ft.ElevatedButton(
+                                text="Add Faction",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6", # Light blue button
+                                color="#FFFFFF",
+                                on_click=add_faction
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=factions_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            faction_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_districts_view():
+        district_name_input = ft.TextField(
+            label="District Name",
+            hint_text="Enter district name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        districts_list_view.controls.clear()
+        for dist in districts:
+            districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(dist.name, color="#FFFFFF"), on_tap=lambda e, dist=dist: select_district(dist)))
+
+        def add_district(e):
+            if district_name_input.value:
+                new_district = District(
+                    id=str(uuid.uuid4()),
+                    name=district_name_input.value,
+                    description="", # Placeholder
+                    wealthClass=WealthClass.__args__[0], # Placeholder
+                    atmosphere="", # Placeholder
+                    populationDensity="Sparse", # Placeholder
+                    dominantFaction="", # Placeholder
+                )
+                districts.append(new_district)
+                districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_district.name, color="#FFFFFF"), on_tap=lambda e, dist=new_district: select_district(dist))) # Use GestureDetector
+                district_name_input.value = ""
+                save_districts() # Save districts after adding
+                run_validation() # Run validation after modification
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Districts Management", color="#FFFFFF", size=20),
+                    ft.Text("List of districts and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            district_name_input,
+                            ft.ElevatedButton(
+                                text="Add District",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6", # Light blue button
+                                color="#FFFFFF",
+                                on_click=add_district
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=districts_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            district_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_items_view(): # Added create_items_view
+        item_name_input = ft.TextField(
+            label="Item Name",
+            hint_text="Enter item name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        items_list_view.controls.clear()
+        for item_obj in items:
+            items_list_view.controls.append(ft.GestureDetector(content=ft.Text(item_obj.name, color="#FFFFFF"), on_tap=lambda e, item=item_obj: select_item(item)))
+
+        def add_item(e):
+            if item_name_input.value:
+                new_item = Item(
+                    id=str(uuid.uuid4()),
+                    name=item_name_input.value,
+                    description="", # Placeholder
+                    possibleMeans=False, # Placeholder
+                    possibleMotive=False, # Placeholder
+                    possibleOpportunity=False, # Placeholder
+                    cluePotential="None", # Placeholder
+                    value="", # Placeholder
+                    condition="New", # Placeholder
+                )
+                items.append(new_item)
+                items_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_item.name, color="#FFFFFF"), on_tap=lambda e, item=new_item: select_item(item))) # Use GestureDetector
+                item_name_input.value = ""
+                save_items() # Save items after adding
+                run_validation() # Run validation after modification
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Items Management", color="#FFFFFF", size=20),
+                    ft.Text("List of items and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            item_name_input,
+                            ft.ElevatedButton(
+                                text="Add Item",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6", # Light blue button
+                                color="#FFFFFF",
+                                on_click=add_item
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=items_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            item_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_clues_view(): # Added create_clues_view
+        clue_summary_input = ft.TextField(
+            label="Clue Summary",
+            hint_text="Enter clue summary",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        clues_list_view.controls.clear()
+        for clue_obj in clues:
+            clues_list_view.controls.append(ft.GestureDetector(content=ft.Text(clue_obj.clueSummary, color="#FFFFFF"), on_tap=lambda e, clue=clue_obj: select_clue(clue)))
+
+        def add_clue(e):
+            if clue_summary_input.value:
+                new_clue = Clue(
+                    id=str(uuid.uuid4()),
+                    clueSummary=clue_summary_input.value,
+                    criticalClue=False, # Placeholder
+                    redHerring=False, # Placeholder
+                    isLie=False, # Placeholder
+                    source="", # Placeholder
+                    knowledgeLevel="Sleuth Only", # Placeholder
+                )
+                clues.append(new_clue)
+                clues_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_clue.clueSummary, color="#FFFFFF"), on_tap=lambda e, clue=new_clue: select_clue(clue))) # Use GestureDetector
+                clue_summary_input.value = ""
+                save_clues() # Save clues after adding
+                run_validation() # Run validation after modification
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Clues Management", color="#FFFFFF", size=20),
+                    ft.Text("List of clues and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            clue_summary_input,
+                            ft.ElevatedButton(
+                                text="Add Clue",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6", # Light blue button
+                                color="#FFFFFF",
+                                on_click=add_clue
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=clues_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            clue_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_lore_history_view():
+        lore_history_text_field = ft.TextField(
+            label="Lore and World History",
+            hint_text="Enter historical events, world lore, and background information here.",
+            multiline=True,
+            min_lines=10,
+            max_lines=20,
+            value=lore_history_text,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            expand=True
+        )
+
+        def save_lore_history(e):
+            nonlocal lore_history_text
+            lore_history_text = lore_history_text_field.value
+            save_lore_history() # Save lore history after modification
+            run_validation() # Run validation after modification
+            page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Lore & World History", color="#FFFFFF", size=20),
+                    ft.Text("Timeline of events and world lore will go here.", color="#9E9E9E"),
+                    lore_history_text_field,
+                    ft.ElevatedButton(
+                        text="Save Lore & History",
+                        icon=ft.Icons.SAVE,
+                        bgcolor="#64B5F6",
+                        color="#FFFFFF",
+                        on_click=save_lore_history
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_bulletin_board_view():
+        # Node data structure: {"id": "node1", "type": "character", "x": 100, "y": 100, "text": "Node 1 Text"}
+        # This will be populated from bulletin_board_nodes list
+        node_controls = []
+
+        def on_pan_update(e: ft.DragUpdateEvent, node_data):
+            node_data["x"] += e.delta_x
+            node_data["y"] += e.delta_y
+            e.control.top = node_data["y"]
+            e.control.left = node_data["x"]
+            e.control.update()
+
+        def create_draggable_node(node_data):
+            return ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Text(node_data["text"], color="#FFFFFF"),
+                        # Add more node content here based on node_data["type"]
+                    ]
+                ),
+                width=150,
+                height=100,
+                bgcolor="#3A4D60",
+                border_radius=5,
+                padding=10,
+                top=node_data["y"],
+                left=node_data["x"],
+                data=node_data, # Store node data in the control
+                on_pan_update=lambda e: on_pan_update(e, node_data)
+            )
+
+        def add_node(e):
+            new_node_data = {"id": str(uuid.uuid4()), "type": "generic", "x": 50, "y": 50, "text": "New Node"}
+            bulletin_board_nodes.append(new_node_data)
+            node_controls.append(create_draggable_node(new_node_data))
+            save_bulletin_board_nodes()
+            page.update()
+
+        # Populate nodes from loaded data
+        for node_data in bulletin_board_nodes:
+            node_controls.append(create_draggable_node(node_data))
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Interactive Bulletin Board", color="#FFFFFF", size=20),
+                    ft.Text("Drag and drop nodes to organize your plot.", color="#9E9E9E"),
+                    ft.ElevatedButton(
+                        text="Add Node",
+                        icon=ft.Icons.ADD,
+                        bgcolor="#64B5F6",
+                        color="#FFFFFF",
+                        on_click=add_node
+                    ),
+                    ft.Container(
+                        content=ft.Stack(
+                            node_controls,
+                            expand=True
+                        ),
+                        expand=True,
+                        border=ft.border.all(1, "#3A4D60"),
+                        border_radius=5,
+                        clip_behavior=ft.ClipBehavior.HARD_EDGE, # Clip content outside bounds
+                        scroll=ft.ScrollMode.AUTO # Enable scrolling
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
     # --- Timeline Event Detail View ---
     def create_timeline_event_detail_view(event: TimelineEvent, timeline_events_list_view, timeline_event_detail_container, select_timeline_event):
         name_field = ft.TextField(label="Event Name", value=event.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -1203,6 +2061,7 @@ def main(page: ft.Page):
     load_factions()
     load_districts()
     load_items()
+    load_clues() # Load clues on startup
     load_case_meta()
     load_lore_history()
     load_bulletin_board_nodes()
@@ -1264,6 +2123,7 @@ def main(page: ft.Page):
                 ft.IconButton(icon=ft.Icons.DESCRIPTION, tooltip="Case Metadata", on_click=lambda e: update_main_content(create_case_meta_view())),
                 ft.IconButton(icon=ft.Icons.DASHBOARD, tooltip="Bulletin Board", on_click=lambda e: update_main_content(create_bulletin_board_view())),
                 ft.IconButton(icon=ft.Icons.ACCESS_TIME, tooltip="Timeline", on_click=lambda e: update_main_content(create_timeline_view())),
+                ft.IconButton(icon=ft.Icons.LIGHTBULB, tooltip="Clues", on_click=lambda e: update_main_content(create_clues_view())),
             ])
             update_main_content(create_case_meta_view()) # Default to Case Metadata view
         page.update()
