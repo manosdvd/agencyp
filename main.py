@@ -20,6 +20,8 @@ def main(page: ft.Page):
     locations: list[Location] = []
     factions: list[Faction] = []
     lore_history_text = ""
+    bulletin_board_text = ""
+    timeline_text = ""
 
     # --- Character Detail View ---
     def create_character_detail_view(character: Character):
@@ -578,6 +580,94 @@ def main(page: ft.Page):
                         bgcolor="#64B5F6",
                         color="#FFFFFF",
                         on_click=save_lore_history
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_bulletin_board_view():
+        bulletin_board_text_field = ft.TextField(
+            label="Interactive Bulletin Board",
+            hint_text="Describe the plot graph and node editor here.",
+            multiline=True,
+            min_lines=10,
+            max_lines=20,
+            value=bulletin_board_text,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            expand=True
+        )
+
+        def save_bulletin_board(e):
+            nonlocal bulletin_board_text
+            bulletin_board_text = bulletin_board_text_field.value
+            page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Interactive Bulletin Board", color="#FFFFFF", size=20),
+                    ft.Text("The plot graph and node editor will go here.", color="#9E9E9E"),
+                    bulletin_board_text_field,
+                    ft.ElevatedButton(
+                        text="Save Bulletin Board",
+                        icon=ft.Icons.SAVE,
+                        bgcolor="#64B5F6",
+                        color="#FFFFFF",
+                        on_click=save_bulletin_board
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
+    def create_timeline_view():
+        timeline_text_field = ft.TextField(
+            label="Gamified Timeline Editor",
+            hint_text="Describe the event chain editor here.",
+            multiline=True,
+            min_lines=10,
+            max_lines=20,
+            value=timeline_text,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            expand=True
+        )
+
+        def save_timeline(e):
+            nonlocal timeline_text
+            timeline_text = timeline_text_field.value
+            page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Gamified Timeline Editor", color="#FFFFFF", size=20),
+                    ft.Text("The event chain editor will go here.", color="#9E9E9E"),
+                    timeline_text_field,
+                    ft.ElevatedButton(
+                        text="Save Timeline",
+                        icon=ft.Icons.SAVE,
+                        bgcolor="#64B5F6",
+                        color="#FFFFFF",
+                        on_click=save_timeline
                     )
                 ],
                 expand=True,
