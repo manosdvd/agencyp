@@ -1,5 +1,5 @@
 import flet as ft
-from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction, ValidationResult # Import all necessary dataclasses and enums
+from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction, ValidationResult, CaseMeta # Import all necessary dataclasses and enums
 import uuid # For generating unique IDs
 import json # For JSON serialization
 import os # For path operations
@@ -22,6 +22,7 @@ def main(page: ft.Page):
     locations: list[Location] = []
     factions: list[Faction] = []
     districts: list[District] = []
+    case_meta: CaseMeta = CaseMeta(victim="", culprit="", crimeScene="", murderWeapon="", coreMysterySolutionDetails="") # Initialize CaseMeta
     lore_history_text = ""
     bulletin_board_text = ""
     timeline_text = ""
@@ -33,6 +34,7 @@ def main(page: ft.Page):
     LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
     FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
     DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json")
+    CASE_META_FILE = os.path.join(DATA_DIR, "case_meta.json") # Added case meta file path
     LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
     BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.txt")
     TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.txt")
@@ -164,6 +166,34 @@ def main(page: ft.Page):
                         keyLocations=item.get('keyLocations', []) # Default to empty list
                     ))
 
+    def save_case_meta(): # Added save_case_meta function
+        with open(CASE_META_FILE, "w") as f:
+            json.dump(case_meta.__dict__, f, indent=4)
+
+    def load_case_meta(): # Added load_case_meta function
+        nonlocal case_meta
+        if os.path.exists(CASE_META_FILE):
+            with open(CASE_META_FILE, "r") as f:
+                data = json.load(f)
+                case_meta = CaseMeta(
+                    victim=data['victim'],
+                    culprit=data['culprit'],
+                    crimeScene=data['crimeScene'],
+                    murderWeapon=data['murderWeapon'],
+                    coreMysterySolutionDetails=data['coreMysterySolutionDetails'],
+                    murderWeaponHidden=data.get('murderWeaponHidden', False),
+                    meansClue=data.get('meansClue'),
+                    motiveClue=data.get('motiveClue'),
+                    opportunityClue=data.get('opportunityClue'),
+                    redHerringClues=data.get('redHerringClues', []), # Default to empty list
+                    narrativeViewpoint=data.get('narrativeViewpoint'),
+                    narrativeTense=data.get('narrativeTense'),
+                    openingMonologue=data.get('openingMonologue'),
+                    ultimateRevealSceneDescription=data.get('ultimateRevealSceneDescription'),
+                    successfulDenouement=data.get('successfulDenouement'),
+                    failedDenouement=data.get('failedDenouement')
+                )
+
     def save_lore_history():
         with open(LORE_HISTORY_FILE, "w") as f:
             f.write(lore_history_text)
@@ -216,12 +246,13 @@ def main(page: ft.Page):
         # Helper to check for missing required fields
         def check_missing_required_fields(asset_list, asset_type_name, required_fields):
             for asset in asset_list:
+                asset_identifier = getattr(asset, 'name', getattr(asset, 'fullName', asset.id if hasattr(asset, 'id') else "Case Metadata"))
                 for field_name in required_fields:
                     if not getattr(asset, field_name):
                         validation_results.append(ValidationResult(
-                            message=f"Missing required field '{field_name}' for {asset_type_name}: {getattr(asset, 'name', asset.id)}",
+                            message=f"Missing required field '{field_name}' for {asset_type_name}: {asset_identifier}",
                             type="error",
-                            asset_id=asset.id,
+                            asset_id=getattr(asset, 'id', None),
                             asset_type=asset_type_name,
                             field_name=field_name
                         ))
@@ -241,6 +272,9 @@ def main(page: ft.Page):
         # Run checks for Districts
         check_duplicate_ids(districts, "District")
         check_missing_required_fields(districts, "District", ["name", "description"])
+
+        # Run checks for CaseMeta
+        check_missing_required_fields([case_meta], "CaseMeta", ["victim", "culprit", "crimeScene", "murderWeapon", "coreMysterySolutionDetails"])
 
         # Update Validator UI
         update_validator_ui()
@@ -265,7 +299,7 @@ def main(page: ft.Page):
         height=page.height, # Will be dynamic
         bgcolor="#1A2B3C",
         padding=ft.padding.all(10),
-        border=ft.border.only(left=ft.border.BorderSide(1, "#3A4D60")), # Corrected border property
+        border=ft.border.only(left=ft.border.BorderSide(1, "#3A4D60")),
         visible=True # Initially visible for testing
     )
 
@@ -279,17 +313,100 @@ def main(page: ft.Page):
                 validator_output.controls.append(ft.Text(f"{result.type.upper()}: {result.message}", color=color))
         page.update()
 
-    # Load all data on startup
-    load_characters()
-    load_locations()
-    load_factions()
-    load_districts()
-    load_lore_history()
-    load_bulletin_board()
-    load_timeline()
+    # --- CaseMeta View ---
+    def create_case_meta_view():
+        victim_field = ft.TextField(label="Victim", value=case_meta.victim, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        culprit_field = ft.TextField(label="Culprit", value=case_meta.culprit, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        crime_scene_field = ft.TextField(label="Crime Scene", value=case_meta.crimeScene, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        murder_weapon_field = ft.TextField(label="Murder Weapon", value=case_meta.murderWeapon, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        core_mystery_solution_details_field = ft.TextField(label="Core Mystery Solution Details", value=case_meta.coreMysterySolutionDetails, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        murder_weapon_hidden_field = ft.Checkbox(label="Murder Weapon Hidden", value=case_meta.murderWeaponHidden, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
+        means_clue_field = ft.TextField(label="Means Clue", value=case_meta.meansClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        motive_clue_field = ft.TextField(label="Motive Clue", value=case_meta.motiveClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        opportunity_clue_field = ft.TextField(label="Opportunity Clue", value=case_meta.opportunityClue, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        narrative_viewpoint_field = ft.Dropdown(
+            label="Narrative Viewpoint",
+            value=case_meta.narrativeViewpoint,
+            options=[ft.dropdown.Option("First-Person"), ft.dropdown.Option("Third-Limited (Sleuth)"), ft.dropdown.Option("Third-Limited (Multiple)"), ft.dropdown.Option("Omniscient"), ft.dropdown.Option("Storyteller Omniscient"), ft.dropdown.Option("Epistolary")],
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+        )
+        narrative_tense_field = ft.Dropdown(
+            label="Narrative Tense",
+            value=case_meta.narrativeTense,
+            options=[ft.dropdown.Option("Past"), ft.dropdown.Option("Present")],
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+        )
+        opening_monologue_field = ft.TextField(label="Opening Monologue", value=case_meta.openingMonologue, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        ultimate_reveal_scene_description_field = ft.TextField(label="Ultimate Reveal Scene Description", value=case_meta.ultimateRevealSceneDescription, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        successful_denouement_field = ft.TextField(label="Successful Denouement", value=case_meta.successfulDenouement, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        failed_denouement_field = ft.TextField(label="Failed Denouement", value=case_meta.failedDenouement, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
 
-    # Run initial validation
-    run_validation()
+        def save_case_meta_details(e):
+            case_meta.victim = victim_field.value
+            case_meta.culprit = culprit_field.value
+            case_meta.crimeScene = crime_scene_field.value
+            case_meta.murderWeapon = murder_weapon_field.value
+            case_meta.coreMysterySolutionDetails = core_mystery_solution_details_field.value
+            case_meta.murderWeaponHidden = murder_weapon_hidden_field.value
+            case_meta.meansClue = means_clue_field.value
+            case_meta.motiveClue = motive_clue_field.value
+            case_meta.opportunityClue = opportunity_clue_field.value
+            case_meta.narrativeViewpoint = narrative_viewpoint_field.value
+            case_meta.narrativeTense = narrative_tense_field.value
+            case_meta.openingMonologue = opening_monologue_field.value
+            case_meta.ultimateRevealSceneDescription = ultimate_reveal_scene_description_field.value
+            case_meta.successfulDenouement = successful_denouement_field.value
+            case_meta.failedDenouement = failed_denouement_field.value
+
+            save_case_meta()
+            run_validation()
+            page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Case Metadata", color="#FFFFFF", size=20),
+                    victim_field,
+                    culprit_field,
+                    crime_scene_field,
+                    murder_weapon_field,
+                    core_mystery_solution_details_field,
+                    murder_weapon_hidden_field,
+                    means_clue_field,
+                    motive_clue_field,
+                    opportunity_clue_field,
+                    narrative_viewpoint_field,
+                    narrative_tense_field,
+                    opening_monologue_field,
+                    ultimate_reveal_scene_description_field,
+                    successful_denouement_field,
+                    failed_denouement_field,
+                    ft.ElevatedButton(
+                        text="Save Case Metadata",
+                        icon=ft.Icons.SAVE,
+                        bgcolor="#64B5F6",
+                        color="#FFFFFF",
+                        on_click=save_case_meta_details
+                    )
+                ],
+                scroll=ft.ScrollMode.ADAPTIVE,
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
 
     # --- Character Detail View ---
     def create_character_detail_view(character: Character):
@@ -1156,6 +1273,7 @@ def main(page: ft.Page):
     load_locations()
     load_factions()
     load_districts()
+    load_case_meta()
     load_lore_history()
     load_bulletin_board()
     load_timeline()
@@ -1207,10 +1325,11 @@ def main(page: ft.Page):
         elif e.control.selected_index == 1:  # Case Builder
             secondary_nav_column.controls.clear()
             secondary_nav_column.controls.extend([
+                ft.IconButton(icon=ft.Icons.DESCRIPTION, tooltip="Case Metadata", on_click=lambda e: update_main_content(create_case_meta_view())),
                 ft.IconButton(icon=ft.Icons.DASHBOARD, tooltip="Bulletin Board", on_click=lambda e: update_main_content(create_bulletin_board_view())),
                 ft.IconButton(icon=ft.Icons.ACCESS_TIME, tooltip="Timeline", on_click=lambda e: update_main_content(create_timeline_view())),
             ])
-            update_main_content(create_bulletin_board_view()) # Default to Bulletin Board view
+            update_main_content(create_case_meta_view()) # Default to Case Metadata view
         page.update()
 
     page.appbar = ft.AppBar(
