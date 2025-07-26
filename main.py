@@ -3,9 +3,66 @@ from schemas import Character, Alignment, Gender, WealthClass, Location, Distric
 import uuid # For generating unique IDs
 import json # For JSON serialization
 import os # For path operations
+import zipfile # For zipping/unzipping case files
+import shutil # For high-level file operations like copying directories
 
 def main(page: ft.Page):
     page.title = "The Agency"
+
+    page.appbar = ft.AppBar(
+        title=ft.Text("The Agency Case Builder"),
+        center_title=False,
+        bgcolor=page.bgcolor,
+        actions=[
+            ft.IconButton(ft.Icons.SAVE, on_click=lambda e: save_all_data(), tooltip="Save All Data"),
+            ft.IconButton(ft.Icons.CREATE_NEW_FOLDER, on_click=lambda e: new_case(), tooltip="New Case"),
+            ft.IconButton(ft.Icons.FOLDER_OPEN, on_click=lambda e: pick_open_file_dialog.pick_directory(), tooltip="Open Case"),
+            ft.IconButton(ft.Icons.UPLOAD_FILE, on_click=lambda e: pick_export_file_dialog.save_file(), tooltip="Export Case"),
+            ft.IconButton(ft.Icons.DOWNLOAD_FOR_OFFLINE, on_click=lambda e: pick_import_file_dialog.pick_files(allow_multiple=False), tooltip="Import Case"),
+        ]
+    )
+
+    # File picker for opening/importing cases
+    def pick_open_file_result(e: ft.FilePickerResultEvent):
+        nonlocal DATA_DIR, CHARACTERS_FILE, LOCATIONS_FILE, FACTIONS_FILE, DISTRICTS_FILE, ITEMS_FILE, CLUES_FILE, CASE_META_FILE, LORE_HISTORY_FILE, BULLETIN_BOARD_FILE, TIMELINE_FILE
+        if e.path:
+            DATA_DIR = e.path
+            CHARACTERS_FILE = os.path.join(DATA_DIR, "characters.json")
+            LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
+            FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
+            DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json")
+            ITEMS_FILE = os.path.join(DATA_DIR, "items.json")
+            CLUES_FILE = os.path.join(DATA_DIR, "clues.json")
+            CASE_META_FILE = os.path.join(DATA_DIR, "case_meta.json")
+            LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
+            BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.json")
+            TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.json")
+            load_all_data()
+            page.snack_bar = ft.SnackBar(ft.Text(f"Case opened successfully from {DATA_DIR}"), open=True)
+        page.update()
+
+    pick_open_file_dialog = ft.FilePicker(on_result=pick_open_file_result)
+    page.overlay.append(pick_open_file_dialog)
+
+    # File picker for exporting cases
+    def pick_export_file_result(e: ft.FilePickerResultEvent):
+        if e.path:
+            export_case(e.path)
+
+    pick_export_file_dialog = ft.FilePicker(on_result=pick_export_file_result)
+    page.overlay.append(pick_export_file_dialog)
+
+    # File picker for importing cases (explicitly for import)
+    def pick_import_file_result(e: ft.FilePickerResultEvent):
+        if e.files:
+            import_case(e.files[0].path)
+
+    pick_import_file_dialog = ft.FilePicker(on_result=pick_import_file_result)
+    page.overlay.append(pick_import_file_dialog)
+
+    
+
+    # --- Main Layout ---
     page.vertical_alignment = ft.MainAxisAlignment.START
     page.horizontal_alignment = ft.CrossAxisAlignment.START
     page.window_width = 1200
@@ -16,18 +73,24 @@ def main(page: ft.Page):
     # Noir Theme
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#1A2B3C"  # Dark navy blue
-
     # --- Data Storage (in-memory for now) ---
     characters: list[Character] = []
+    characters_by_id: dict[str, Character] = {} # New in-memory index
     locations: list[Location] = []
+    locations_by_id: dict[str, Location] = {} # New in-memory index
     factions: list[Faction] = []
+    factions_by_id: dict[str, Faction] = {} # New in-memory index
     districts: list[District] = []
+    districts_by_id: dict[str, District] = {} # New in-memory index
     items: list[Item] = []
+    items_by_id: dict[str, Item] = {} # New in-memory index
     clues: list[Clue] = [] # Added clues list
+    clues_by_id: dict[str, Clue] = {} # New in-memory index
     case_meta: CaseMeta = CaseMeta(victim="", culprit="", crimeScene="", murderWeapon="", coreMysterySolutionDetails="") # Initialize CaseMeta
     lore_history_text = ""
     bulletin_board_nodes = [] # Changed to store node data
     timeline_events: list[TimelineEvent] = [] # Changed to store TimelineEvent objects
+    timeline_events_by_id: dict[str, TimelineEvent] = {} # New in-memory index
     validation_results: list[ValidationResult] = []
 
     # --- File Paths ---
@@ -47,19 +110,97 @@ def main(page: ft.Page):
     os.makedirs(DATA_DIR, exist_ok=True)
 
     # --- Save/Load Functions ---
+    def save_all_data():
+        save_characters()
+        save_locations()
+        save_factions()
+        save_districts()
+        save_items()
+        save_clues()
+        save_case_meta()
+        save_lore_history()
+        save_bulletin_board_nodes()
+        save_timeline_events()
+
+    def load_all_data():
+        load_characters()
+        load_locations()
+        load_factions()
+        load_districts()
+        load_items()
+        load_clues()
+        load_case_meta()
+        load_lore_history()
+        load_bulletin_board_nodes()
+        load_timeline_events()
+        run_validation() # Run validation after loading all data
+
+    def export_case(export_path: str):
+        try:
+            # Create a zip file of the DATA_DIR
+            shutil.make_archive(os.path.splitext(export_path)[0], 'zip', DATA_DIR)
+            page.snack_bar = ft.SnackBar(ft.Text(f"Case exported successfully to {export_path}"), open=True)
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Error exporting case: {e}"), open=True)
+        page.update()
+
+    def import_case(import_path: str):
+        try:
+            # Clear existing data directory
+            if os.path.exists(DATA_DIR):
+                shutil.rmtree(DATA_DIR)
+            os.makedirs(DATA_DIR, exist_ok=True)
+
+            # Unzip the new data
+            with zipfile.ZipFile(import_path, 'r') as zip_ref:
+                zip_ref.extractall(DATA_DIR)
+            
+            load_all_data() # Reload all data from the imported files
+            page.snack_bar = ft.SnackBar(ft.Text(f"Case imported successfully from {import_path}"), open=True)
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Error importing case: {e}"), open=True)
+        page.update()
+
+    def new_case():
+        nonlocal characters, locations, factions, districts, items, clues, case_meta, lore_history_text, bulletin_board_nodes, timeline_events
+        characters.clear()
+        characters_by_id.clear()
+        locations.clear()
+        locations_by_id.clear()
+        factions.clear()
+        factions_by_id.clear()
+        districts.clear()
+        districts_by_id.clear()
+        items.clear()
+        items_by_id.clear()
+        clues.clear()
+        clues_by_id.clear()
+        case_meta = CaseMeta(victim="", culprit="", crimeScene="", murderWeapon="", coreMysterySolutionDetails="")
+        lore_history_text = ""
+        bulletin_board_nodes.clear()
+        timeline_events.clear()
+        timeline_events_by_id.clear()
+        validation_results.clear()
+        # Clear data directory on disk
+        if os.path.exists(DATA_DIR):
+            shutil.rmtree(DATA_DIR)
+        os.makedirs(DATA_DIR, exist_ok=True)
+        page.snack_bar = ft.SnackBar(ft.Text("New case created."), open=True)
+        page.update()
+
     def save_characters():
         with open(CHARACTERS_FILE, "w") as f:
             json.dump([char.__dict__ for char in characters], f, indent=4)
 
     def load_characters():
+        nonlocal characters, characters_by_id
         if os.path.exists(CHARACTERS_FILE):
             with open(CHARACTERS_FILE, "r") as f:
                 data = json.load(f)
                 characters.clear()
+                characters_by_id.clear()
                 for item in data:
-                    # Convert dictionary back to Character object
-                    # Handle optional fields that might be None in JSON
-                    characters.append(Character(
+                    char = Character(
                         id=item['id'],
                         fullName=item['fullName'],
                         biography=item['biography'],
@@ -76,34 +217,38 @@ def main(page: ft.Page):
                         faction=item.get('faction'),
                         wealthClass=item.get('wealthClass'),
                         district=item.get('district'),
-                        motivations=item.get('motivations', []), # Default to empty list
-                        secrets=item.get('secrets', []), # Default to empty list
-                        allies=item.get('allies', []), # Default to empty list
-                        enemies=item.get('enemies', []), # Default to empty list
-                        items=item.get('items', []), # Default to empty list
+                        motivations=item.get('motivations', []),
+                        secrets=item.get('secrets', []),
+                        allies=item.get('allies', []),
+                        enemies=item.get('enemies', []),
+                        items=item.get('items', []),
                         archetype=item.get('archetype'),
-                        values=item.get('values', []), # Default to empty list
-                        flawsHandicapsLimitations=item.get('flawsHandicapsLimitations', []), # Default to empty list
-                        quirks=item.get('quirks', []), # Default to empty list
-                        characteristics=item.get('characteristics', []), # Default to empty list
-                        vulnerabilities=item.get('vulnerabilities', []), # Default to empty list
+                        values=item.get('values', []),
+                        flawsHandicapsLimitations=item.get('flawsHandicapsLimitations', []),
+                        quirks=item.get('quirks', []),
+                        characteristics=item.get('characteristics', []),
+                        vulnerabilities=item.get('vulnerabilities', []),
                         voiceModel=item.get('voiceModel'),
                         dialogueStyle=item.get('dialogueStyle'),
-                        expertise=item.get('expertise', []), # Default to empty list
+                        expertise=item.get('expertise', []),
                         portrayalNotes=item.get('portrayalNotes')
-                    ))
+                    )
+                    characters.append(char)
+                    characters_by_id[char.id] = char
 
     def save_locations():
         with open(LOCATIONS_FILE, "w") as f:
             json.dump([loc.__dict__ for loc in locations], f, indent=4)
 
     def load_locations():
+        nonlocal locations, locations_by_id
         if os.path.exists(LOCATIONS_FILE):
             with open(LOCATIONS_FILE, "r") as f:
                 data = json.load(f)
                 locations.clear()
+                locations_by_id.clear()
                 for item in data:
-                    locations.append(Location(
+                    loc = Location(
                         id=item['id'],
                         name=item['name'],
                         description=item['description'],
@@ -113,51 +258,59 @@ def main(page: ft.Page):
                         dangerLevel=item.get('dangerLevel'),
                         population=item.get('population'),
                         image=item.get('image'),
-                        keyCharacters=item.get('keyCharacters', []), # Default to empty list
-                        associatedItems=item.get('associatedItems', []), # Default to empty list
+                        keyCharacters=item.get('keyCharacters', []),
+                        associatedItems=item.get('associatedItems', []),
                         accessibility=item.get('accessibility'),
                         hidden=item.get('hidden'),
                         internalLogicNotes=item.get('internalLogicNotes'),
-                        clues=item.get('clues', []) # Default to empty list
-                    ))
+                        clues=item.get('clues', [])
+                    )
+                    locations.append(loc)
+                    locations_by_id[loc.id] = loc
 
     def save_factions():
         with open(FACTIONS_FILE, "w") as f:
             json.dump([fac.__dict__ for fac in factions], f, indent=4)
 
     def load_factions():
+        nonlocal factions, factions_by_id
         if os.path.exists(FACTIONS_FILE):
             with open(FACTIONS_FILE, "r") as f:
                 data = json.load(f)
                 factions.clear()
+                factions_by_id.clear()
                 for item in data:
-                    factions.append(Faction(
+                    fac = Faction(
                         id=item['id'],
                         name=item['name'],
                         description=item['description'],
                         archetype=item.get('archetype'),
                         ideology=item.get('ideology'),
                         headquarters=item.get('headquarters'),
-                        resources=item.get('resources', []), # Default to empty list
+                        resources=item.get('resources', []),
                         image=item.get('image'),
-                        allyFactions=item.get('allyFactions', []), # Default to empty list
-                        enemyFactions=item.get('enemies', []), # Default to empty list
-                        members=item.get('members', []), # Default to empty list
+                        allyFactions=item.get('allyFactions', []),
+                        enemyFactions=item.get('enemyFactions', []),
+                        members=item.get('members', []),
                         influence=item.get('influence'),
                         publicPerception=item.get('publicPerception')
-                    ))
+                    )
+                    factions.append(fac)
+                    factions_by_id[fac.id] = fac
 
     def save_districts():
         with open(DISTRICTS_FILE, "w") as f:
             json.dump([dist.__dict__ for dist in districts], f, indent=4)
 
     def load_districts():
+        nonlocal districts, districts_by_id
         if os.path.exists(DISTRICTS_FILE):
             with open(DISTRICTS_FILE, "r") as f:
                 data = json.load(f)
                 districts.clear()
+                districts_by_id.clear()
                 for item in data:
-                    districts.append(District(
+                    dist = District(
                         id=item['id'],
                         name=item['name'],
                         description=item['description'],
@@ -165,22 +318,26 @@ def main(page: ft.Page):
                         wealthClass=item.get('wealthClass'),
                         atmosphere=item.get('atmosphere'),
                         populationDensity=item.get('populationDensity'),
-                        notableFeatures=item.get('notableFeatures', []), # Default to empty list
+                        notableFeatures=item.get('notableFeatures', []),
                         dominantFaction=item.get('dominantFaction'),
-                        keyLocations=item.get('keyLocations', []) # Default to empty list
-                    ))
+                        keyLocations=item.get('keyLocations', [])
+                    )
+                    districts.append(dist)
+                    districts_by_id[dist.id] = dist
 
     def save_items(): # Added save_items function
         with open(ITEMS_FILE, "w") as f:
             json.dump([item.__dict__ for item in items], f, indent=4)
 
     def load_items(): # Added load_items function
+        nonlocal items, items_by_id
         if os.path.exists(ITEMS_FILE):
             with open(ITEMS_FILE, "r") as f:
                 data = json.load(f)
                 items.clear()
+                items_by_id.clear()
                 for item_data in data:
-                    items.append(Item(
+                    item = Item(
                         id=item_data['id'],
                         name=item_data['name'],
                         description=item_data['description'],
@@ -194,23 +351,26 @@ def main(page: ft.Page):
                         type=item_data.get('type'),
                         defaultLocation=item_data.get('defaultLocation'),
                         defaultOwner=item_data.get('defaultOwner'),
-                        use=item_data.get('use', []), # Default to empty list
-                        uniqueProperties=item_data.get('uniqueProperties', []), # Default to empty list
+                        use=item_data.get('use', []),
+                        uniqueProperties=item_data.get('uniqueProperties', []),
                         significance=item_data.get('significance')
-                    ))
+                    )
+                    items.append(item)
+                    items_by_id[item.id] = item
 
     def save_clues(): # Added save_clues function
         with open(CLUES_FILE, "w") as f:
             json.dump([clue.__dict__ for clue in clues], f, indent=4)
 
     def load_clues(): # Added load_clues function
-        nonlocal clues
+        nonlocal clues, clues_by_id
         if os.path.exists(CLUES_FILE):
             with open(CLUES_FILE, "r") as f:
                 data = json.load(f)
                 clues.clear()
+                clues_by_id.clear()
                 for item in data:
-                    clues.append(Clue(
+                    clue = Clue(
                         id=item['id'],
                         criticalClue=item['criticalClue'],
                         redHerring=item['redHerring'],
@@ -218,19 +378,21 @@ def main(page: ft.Page):
                         source=item['source'],
                         clueSummary=item['clueSummary'],
                         knowledgeLevel=item['knowledgeLevel'],
-                        discoveryPath=item.get('discoveryPath', []), # Default to empty list
-                        presentationMethod=item.get('presentationMethod', []), # Default to empty list
+                        discoveryPath=item.get('discoveryPath', []),
+                        presentationMethod=item.get('presentationMethod', []),
                         characterImplicated=item.get('characterImplicated'),
                         redHerringType=item.get('redHerringType'),
                         mechanismOfMisdirection=item.get('mechanismOfMisdirection'),
                         debunkingClue=item.get('debunkingClue'),
-                        dependencies=item.get('dependencies', []), # Default to empty list
-                        requiredActionsForDiscovery=item.get('requiredActionsForDiscovery', []), # Default to empty list
-                        revealsUnlocks=item.get('revealsUnlocks', []), # Default to empty list
+                        dependencies=item.get('dependencies', []),
+                        requiredActionsForDiscovery=item.get('requiredActionsForDiscovery', []),
+                        revealsUnlocks=item.get('revealsUnlocks', []),
                         associatedItem=item.get('associatedItem'),
                         associatedLocation=item.get('associatedLocation'),
                         associatedCharacter=item.get('associatedCharacter')
-                    ))
+                    )
+                    clues.append(clue)
+                    clues_by_id[clue.id] = clue
 
     def save_case_meta(): # Added save_case_meta function
         with open(CASE_META_FILE, "w") as f:
@@ -285,25 +447,28 @@ def main(page: ft.Page):
             json.dump([event.__dict__ for event in timeline_events], f, indent=4)
 
     def load_timeline_events(): # Added load_timeline_events function
-        nonlocal timeline_events
+        nonlocal timeline_events, timeline_events_by_id
         if os.path.exists(TIMELINE_FILE):
             with open(TIMELINE_FILE, "r") as f:
                 data = json.load(f)
                 timeline_events.clear()
+                timeline_events_by_id.clear()
                 for item in data:
-                    timeline_events.append(TimelineEvent(
+                    event = TimelineEvent(
                         id=item['id'],
                         name=item['name'],
                         description=item['description'],
                         timestamp=item['timestamp'],
-                        associatedCharacters=item.get('associatedCharacters', []), # Default to empty list
-                        associatedLocations=item.get('associatedLocations', []), # Default to empty list
-                        associatedItems=item.get('associatedItems', []), # Default to empty list
-                        cluesGenerated=item.get('cluesGenerated', []), # Default to empty list
+                        associatedCharacters=item.get('associatedCharacters', []),
+                        associatedLocations=item.get('associatedLocations', []),
+                        associatedItems=item.get('associatedItems', []),
+                        cluesGenerated=item.get('cluesGenerated', []),
                         revealsTruth=item.get('revealsTruth', False),
                         revealsLie=item.get('revealsLie', False),
                         lieDebunked=item.get('lieDebunked')
-                    ))
+                    )
+                    timeline_events.append(event)
+                    timeline_events_by_id[event.id] = event
 
     # --- Validation Logic ---
     def run_validation():
@@ -378,7 +543,7 @@ def main(page: ft.Page):
 
         # Tier 2: Logical Consistency (Errors)
         # Orphan Clues (simplified: check if victim, culprit, crimeScene, murderWeapon exist as IDs)
-        all_asset_ids = set([c.id for c in characters] + [l.id for l in locations] + [f.id for f in factions] + [d.id for d in districts] + [i.id for i in items])
+        all_asset_ids = set(characters_by_id.keys() | locations_by_id.keys() | factions_by_id.keys() | districts_by_id.keys() | items_by_id.keys())
         if case_meta.victim and case_meta.victim not in all_asset_ids:
             validation_results.append(ValidationResult(message=f"CaseMeta: Victim ID '{case_meta.victim}' not found in assets.", type="error", asset_type="CaseMeta", field_name="victim"))
         if case_meta.culprit and case_meta.culprit not in all_asset_ids:
@@ -405,7 +570,7 @@ def main(page: ft.Page):
         # Circular Logic (direct allies/enemies)
         for char in characters:
             for ally_id in char.allies:
-                ally_char = next((c for c in characters if c.id == ally_id), None)
+                ally_char = characters_by_id.get(ally_id)
                 if ally_char and char.id in ally_char.allies:
                     validation_results.append(ValidationResult(
                         message=f"Circular alliance detected between {char.fullName} and {ally_char.fullName}.",
@@ -415,7 +580,7 @@ def main(page: ft.Page):
                         field_name="allies"
                     ))
             for enemy_id in char.enemies:
-                enemy_char = next((c for c in characters if c.id == enemy_id), None)
+                enemy_char = characters_by_id.get(enemy_id)
                 if enemy_char and char.id in enemy_char.enemies:
                     validation_results.append(ValidationResult(
                         message=f"Circular enmity detected between {char.fullName} and {enemy_char.fullName}.",
@@ -430,6 +595,14 @@ def main(page: ft.Page):
             if clue.isLie and not clue.debunkingClue:
                 validation_results.append(ValidationResult(
                     message=f"Undebunkable lie detected for clue '{clue.clueSummary}'. All lies must have a debunking clue.",
+                    type="error",
+                    asset_id=clue.id,
+                    asset_type="Clue",
+                    field_name="debunkingClue"
+                ))
+            if clue.debunkingClue and clue.debunkingClue not in clues_by_id:
+                validation_results.append(ValidationResult(
+                    message=f"Debunking clue ID '{clue.debunkingClue}' for clue '{clue.clueSummary}' not found.",
                     type="error",
                     asset_id=clue.id,
                     asset_type="Clue",
@@ -456,6 +629,80 @@ def main(page: ft.Page):
                 asset_type="Clue",
                 field_name="redHerring"
             ))
+
+        # Check for valid associated IDs in Clues
+        for clue in clues:
+            if clue.associatedItem and clue.associatedItem not in items_by_id:
+                validation_results.append(ValidationResult(
+                    message=f"Associated Item ID '{clue.associatedItem}' for clue '{clue.clueSummary}' not found.",
+                    type="error",
+                    asset_id=clue.id,
+                    asset_type="Clue",
+                    field_name="associatedItem"
+                ))
+            if clue.associatedLocation and clue.associatedLocation not in locations_by_id:
+                validation_results.append(ValidationResult(
+                    message=f"Associated Location ID '{clue.associatedLocation}' for clue '{clue.clueSummary}' not found.",
+                    type="error",
+                    asset_id=clue.id,
+                    asset_type="Clue",
+                    field_name="associatedLocation"
+                ))
+            if clue.associatedCharacter and clue.associatedCharacter not in characters_by_id:
+                validation_results.append(ValidationResult(
+                    message=f"Associated Character ID '{clue.associatedCharacter}' for clue '{clue.clueSummary}' not found.",
+                    type="error",
+                    asset_id=clue.id,
+                    asset_type="Clue",
+                    field_name="associatedCharacter"
+                ))
+
+        # Check for valid associated IDs in Timeline Events
+        for event in timeline_events:
+            for char_id in event.associatedCharacters:
+                if char_id not in characters_by_id:
+                    validation_results.append(ValidationResult(
+                        message=f"Associated Character ID '{char_id}' for timeline event '{event.name}' not found.",
+                        type="error",
+                        asset_id=event.id,
+                        asset_type="TimelineEvent",
+                        field_name="associatedCharacters"
+                    ))
+            for loc_id in event.associatedLocations:
+                if loc_id not in locations_by_id:
+                    validation_results.append(ValidationResult(
+                        message=f"Associated Location ID '{loc_id}' for timeline event '{event.name}' not found.",
+                        type="error",
+                        asset_id=event.id,
+                        asset_type="TimelineEvent",
+                        field_name="associatedLocations"
+                    ))
+            for item_id in event.associatedItems:
+                if item_id not in items_by_id:
+                    validation_results.append(ValidationResult(
+                        message=f"Associated Item ID '{item_id}' for timeline event '{event.name}' not found.",
+                        type="error",
+                        asset_id=event.id,
+                        asset_type="TimelineEvent",
+                        field_name="associatedItems"
+                    ))
+            for clue_id in event.cluesGenerated:
+                if clue_id not in clues_by_id:
+                    validation_results.append(ValidationResult(
+                        message=f"Clue Generated ID '{clue_id}' for timeline event '{event.name}' not found.",
+                        type="error",
+                        asset_id=event.id,
+                        asset_type="TimelineEvent",
+                        field_name="cluesGenerated"
+                    ))
+            if event.lieDebunked and event.lieDebunked not in clues_by_id:
+                validation_results.append(ValidationResult(
+                    message=f"Lie Debunked ID '{event.lieDebunked}' for timeline event '{event.name}' not found.",
+                    type="error",
+                    asset_id=event.id,
+                    asset_type="TimelineEvent",
+                    field_name="lieDebunked"
+                ))
 
         # Update Validator UI
         update_validator_ui()
@@ -694,6 +941,7 @@ def main(page: ft.Page):
             page.update()
 
         def delete_character(e):
+            del characters_by_id[character.id] # Remove from index
             characters.remove(character)
             characters_list_view.controls.clear()
             for char_item in characters:
@@ -812,6 +1060,7 @@ def main(page: ft.Page):
             page.update()
 
         def delete_location(e):
+            del locations_by_id[location.id] # Remove from index
             locations.remove(location)
             locations_list_view.controls.clear()
             for loc_item in locations:
@@ -910,6 +1159,7 @@ def main(page: ft.Page):
             page.update()
 
         def delete_faction(e):
+            del factions_by_id[faction.id] # Remove from index
             factions.remove(faction)
             factions_list_view.controls.clear()
             for fac_item in factions:
@@ -1010,6 +1260,7 @@ def main(page: ft.Page):
             page.update()
 
         def delete_district(e):
+            del districts_by_id[district.id] # Remove from index
             districts.remove(district)
             districts_list_view.controls.clear()
             for dist_item in districts:
@@ -1117,6 +1368,7 @@ def main(page: ft.Page):
             page.update()
 
         def delete_item(e):
+            del items_by_id[item.id] # Remove from index
             items.remove(item)
             items_list_view.controls.clear()
             for item_obj in items:
@@ -1226,6 +1478,7 @@ def main(page: ft.Page):
             page.update()
 
         def delete_clue(e):
+            del clues_by_id[clue.id] # Remove from index
             clues.remove(clue)
             clues_list_view.controls.clear()
             for clue_obj in clues:
@@ -1359,6 +1612,7 @@ def main(page: ft.Page):
                     wealthClass=WealthClass.__args__[0] # Use first value from Literal as default
                 )
                 characters.append(new_character)
+                characters_by_id[new_character.id] = new_character # Add to index
                 characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_character.fullName, color="#FFFFFF"), on_tap=lambda e, char=new_character: select_character(char))) # Use GestureDetector
                 character_name_input.value = ""
                 save_characters() # Save characters after adding
@@ -1438,6 +1692,7 @@ def main(page: ft.Page):
                     internalLogicNotes="", # Placeholder
                 )
                 locations.append(new_location)
+                locations_by_id[new_location.id] = new_location # Add to index
                 locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_location.name, color="#FFFFFF"), on_tap=lambda e, loc=new_location: select_location(loc))) # Use GestureDetector
                 location_name_input.value = ""
                 save_locations() # Save locations after adding
@@ -1513,6 +1768,7 @@ def main(page: ft.Page):
                     publicPerception="", # Placeholder
                 )
                 factions.append(new_faction)
+                factions_by_id[new_faction.id] = new_faction # Add to index
                 factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_faction.name, color="#FFFFFF"), on_tap=lambda e, fac=new_faction: select_faction(fac))) # Use GestureDetector
                 faction_name_input.value = ""
                 save_factions() # Save factions after adding
@@ -1588,6 +1844,7 @@ def main(page: ft.Page):
                     dominantFaction="", # Placeholder
                 )
                 districts.append(new_district)
+                districts_by_id[new_district.id] = new_district # Add to index
                 districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_district.name, color="#FFFFFF"), on_tap=lambda e, dist=new_district: select_district(dist))) # Use GestureDetector
                 district_name_input.value = ""
                 save_districts() # Save districts after adding
@@ -1665,6 +1922,7 @@ def main(page: ft.Page):
                     condition="New", # Placeholder
                 )
                 items.append(new_item)
+                items_by_id[new_item.id] = new_item # Add to index
                 items_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_item.name, color="#FFFFFF"), on_tap=lambda e, item=new_item: select_item(item))) # Use GestureDetector
                 item_name_input.value = ""
                 save_items() # Save items after adding
@@ -1740,6 +1998,7 @@ def main(page: ft.Page):
                     knowledgeLevel="Sleuth Only", # Placeholder
                 )
                 clues.append(new_clue)
+                clues_by_id[new_clue.id] = new_clue # Add to index
                 clues_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_clue.clueSummary, color="#FFFFFF"), on_tap=lambda e, clue=new_clue: select_clue(clue))) # Use GestureDetector
                 clue_summary_input.value = ""
                 save_clues() # Save clues after adding
@@ -1938,6 +2197,7 @@ def main(page: ft.Page):
             page.update()
 
         def delete_timeline_event(e):
+            del timeline_events_by_id[event.id] # Remove from index
             timeline_events.remove(event)
             timeline_events_list_view.controls.clear()
             for event_obj in timeline_events:
@@ -2010,6 +2270,7 @@ def main(page: ft.Page):
                     timestamp="", # Placeholder
                 )
                 timeline_events.append(new_event)
+                timeline_events_by_id[new_event.id] = new_event # Add to index
                 timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_event.name, color="#FFFFFF"), on_tap=lambda e, event=new_event: select_timeline_event(event))) # Use GestureDetector
                 timeline_name_input.value = ""
                 save_timeline_events()
@@ -2055,24 +2316,12 @@ def main(page: ft.Page):
             padding=20
         )
 
-    # Load all data on startup
-    load_characters()
-    load_locations()
-    load_factions()
-    load_districts()
-    load_items()
-    load_clues() # Load clues on startup
-    load_case_meta()
-    load_lore_history()
-    load_bulletin_board_nodes()
-    load_timeline_events()
+    
 
     # Populate sample data if no characters exist (simple check to avoid overwriting existing data)
-    if not characters:
-        populate_sample_data()
-
     # Run initial validation
-    run_validation()
+    load_all_data()
+    page.update()
 
     # --- Main Content Area ---
     main_content_area = ft.Column([create_characters_view()], expand=True)
