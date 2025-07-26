@@ -1,6 +1,8 @@
 import flet as ft
 from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction # Import all necessary dataclasses and enums
 import uuid # For generating unique IDs
+import json # For JSON serialization
+import os # For path operations
 
 def main(page: ft.Page):
     page.title = "The Agency"
@@ -22,6 +24,65 @@ def main(page: ft.Page):
     lore_history_text = ""
     bulletin_board_text = ""
     timeline_text = ""
+
+    # --- File Paths ---
+    DATA_DIR = "./data"
+    CHARACTERS_FILE = os.path.join(DATA_DIR, "characters.json")
+    LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
+    FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
+    LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
+    BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.txt")
+    TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.txt")
+
+    # Ensure data directory exists
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+    # --- Save/Load Functions ---
+    def save_characters():
+        with open(CHARACTERS_FILE, "w") as f:
+            json.dump([char.__dict__ for char in characters], f, indent=4)
+
+    def load_characters():
+        if os.path.exists(CHARACTERS_FILE):
+            with open(CHARACTERS_FILE, "r") as f:
+                data = json.load(f)
+                characters.clear()
+                for item in data:
+                    # Convert dictionary back to Character object
+                    # Handle optional fields that might be None in JSON
+                    characters.append(Character(
+                        id=item['id'],
+                        fullName=item['fullName'],
+                        biography=item['biography'],
+                        personality=item['personality'],
+                        alignment=item['alignment'],
+                        honesty=item['honesty'],
+                        victimLikelihood=item['victimLikelihood'],
+                        killerLikelihood=item['killerLikelihood'],
+                        alias=item.get('alias'),
+                        age=item.get('age'),
+                        gender=item.get('gender'),
+                        employment=item.get('employment'),
+                        image=item.get('image'),
+                        faction=item.get('faction'),
+                        wealthClass=item.get('wealthClass'),
+                        district=item.get('district'),
+                        motivations=item.get('motivations', []), # Default to empty list
+                        secrets=item.get('secrets', []), # Default to empty list
+                        allies=item.get('allies', []), # Default to empty list
+                        enemies=item.get('enemies', []), # Default to empty list
+                        items=item.get('items', []), # Default to empty list
+                        archetype=item.get('archetype'),
+                        values=item.get('values', []), # Default to empty list
+                        flawsHandicapsLimitations=item.get('flawsHandicapsLimitations', []), # Default to empty list
+                        quirks=item.get('quirks', []), # Default to empty list
+                        characteristics=item.get('characteristics', []), # Default to empty list
+                        vulnerabilities=item.get('vulnerabilities', []), # Default to empty list
+                        voiceModel=item.get('voiceModel'),
+                        dialogueStyle=item.get('dialogueStyle'),
+                        expertise=item.get('expertise', []), # Default to empty list
+                        portrayalNotes=item.get('portrayalNotes')
+                    ))
 
     # --- Character Detail View ---
     def create_character_detail_view(character: Character):
@@ -81,6 +142,7 @@ def main(page: ft.Page):
             characters_list_view.controls.clear()
             for char in characters:
                 characters_list_view.controls.append(ft.Text(char.fullName, color="#FFFFFF", on_click=select_character))
+            save_characters() # Save characters after modification
             page.update()
 
         def delete_character(e):
@@ -89,6 +151,7 @@ def main(page: ft.Page):
             for char in characters:
                 characters_list_view.controls.append(ft.Text(char.fullName, color="#FFFFFF", on_click=select_character))
             character_detail_container.content = ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")])
+            save_characters() # Save characters after modification
             page.update()
 
         return ft.Column(
@@ -166,6 +229,7 @@ def main(page: ft.Page):
             locations_list_view.controls.clear()
             for loc in locations:
                 locations_list_view.controls.append(ft.Text(loc.name, color="#FFFFFF", on_click=select_location))
+            save_locations() # Save locations after modification
             page.update()
 
         def delete_location(e):
@@ -174,6 +238,7 @@ def main(page: ft.Page):
             for loc in locations:
                 locations_list_view.controls.append(ft.Text(loc.name, color="#FFFFFF", on_click=select_location))
             location_detail_container.content = ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")])
+            save_locations() # Save locations after modification
             page.update()
 
         return ft.Column(
@@ -234,6 +299,7 @@ def main(page: ft.Page):
             factions_list_view.controls.clear()
             for fac in factions:
                 factions_list_view.controls.append(ft.Text(fac.name, color="#FFFFFF", on_click=select_faction))
+            save_factions() # Save factions after modification
             page.update()
 
         def delete_faction(e):
@@ -242,6 +308,7 @@ def main(page: ft.Page):
             for fac in factions:
                 factions_list_view.controls.append(ft.Text(fac.name, color="#FFFFFF", on_click=select_faction))
             faction_detail_container.content = ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")])
+            save_factions() # Save factions after modification
             page.update()
 
         return ft.Column(
@@ -276,6 +343,99 @@ def main(page: ft.Page):
             expand=True
         )
 
+    # --- Save/Load Functions for other data types ---
+    def save_locations():
+        with open(LOCATIONS_FILE, "w") as f:
+            json.dump([loc.__dict__ for loc in locations], f, indent=4)
+
+    def load_locations():
+        if os.path.exists(LOCATIONS_FILE):
+            with open(LOCATIONS_FILE, "r") as f:
+                data = json.load(f)
+                locations.clear()
+                for item in data:
+                    locations.append(Location(
+                        id=item['id'],
+                        name=item['name'],
+                        description=item['description'],
+                        type=item.get('type'),
+                        district=item.get('district'),
+                        owningFaction=item.get('owningFaction'),
+                        dangerLevel=item.get('dangerLevel'),
+                        population=item.get('population'),
+                        image=item.get('image'),
+                        keyCharacters=item.get('keyCharacters', []), # Default to empty list
+                        associatedItems=item.get('associatedItems', []), # Default to empty list
+                        accessibility=item.get('accessibility'),
+                        hidden=item.get('hidden'),
+                        internalLogicNotes=item.get('internalLogicNotes'),
+                        clues=item.get('clues', []) # Default to empty list
+                    ))
+
+    def save_factions():
+        with open(FACTIONS_FILE, "w") as f:
+            json.dump([fac.__dict__ for fac in factions], f, indent=4)
+
+    def load_factions():
+        if os.path.exists(FACTIONS_FILE):
+            with open(FACTIONS_FILE, "r") as f:
+                data = json.load(f)
+                factions.clear()
+                for item in data:
+                    factions.append(Faction(
+                        id=item['id'],
+                        name=item['name'],
+                        description=item['description'],
+                        archetype=item.get('archetype'),
+                        ideology=item.get('ideology'),
+                        headquarters=item.get('headquarters'),
+                        resources=item.get('resources', []), # Default to empty list
+                        image=item.get('image'),
+                        allyFactions=item.get('allyFactions', []), # Default to empty list
+                        enemyFactions=item.get('enemyFactions', []), # Default to empty list
+                        members=item.get('members', []), # Default to empty list
+                        influence=item.get('influence'),
+                        publicPerception=item.get('publicPerception')
+                    ))
+
+    def save_lore_history():
+        with open(LORE_HISTORY_FILE, "w") as f:
+            f.write(lore_history_text)
+
+    def load_lore_history():
+        nonlocal lore_history_text
+        if os.path.exists(LORE_HISTORY_FILE):
+            with open(LORE_HISTORY_FILE, "r") as f:
+                lore_history_text = f.read()
+
+    def save_bulletin_board():
+        with open(BULLETIN_BOARD_FILE, "w") as f:
+            f.write(bulletin_board_text)
+
+    def load_bulletin_board():
+        nonlocal bulletin_board_text
+        if os.path.exists(BULLETIN_BOARD_FILE):
+            with open(BULLETIN_BOARD_FILE, "r") as f:
+                bulletin_board_text = f.read()
+
+    def save_timeline():
+        with open(TIMELINE_FILE, "w") as f:
+            f.write(timeline_text)
+
+    def load_timeline():
+        nonlocal timeline_text
+        if os.path.exists(TIMELINE_FILE):
+            with open(TIMELINE_FILE, "r") as f:
+                timeline_text = f.read()
+
+    # Load all data on startup
+    load_characters()
+    load_locations()
+    load_factions()
+    load_lore_history()
+    load_bulletin_board()
+    load_timeline()
+
     # --- Content Views ---
     def create_characters_view():
         character_name_input = ft.TextField(
@@ -294,6 +454,7 @@ def main(page: ft.Page):
             expand=True,
             spacing=10,
             padding=20,
+            controls=[ft.Text(char.fullName, color="#FFFFFF", on_click=select_character) for char in characters] # Populate on load
         )
 
         character_detail_container = ft.Container(
@@ -327,6 +488,7 @@ def main(page: ft.Page):
                 characters.append(new_character)
                 characters_list_view.controls.append(ft.Text(new_character.fullName, color="#FFFFFF", on_click=select_character))
                 character_name_input.value = ""
+                save_characters() # Save characters after adding
                 page.update()
 
         return ft.Container(
@@ -385,6 +547,7 @@ def main(page: ft.Page):
             expand=True,
             spacing=10,
             padding=20,
+            controls=[ft.Text(loc.name, color="#FFFFFF", on_click=select_location) for loc in locations] # Populate on load
         )
 
         location_detail_container = ft.Container(
@@ -418,6 +581,7 @@ def main(page: ft.Page):
                 locations.append(new_location)
                 locations_list_view.controls.append(ft.Text(new_location.name, color="#FFFFFF", on_click=select_location))
                 location_name_input.value = ""
+                save_locations() # Save locations after adding
                 page.update()
 
         return ft.Container(
@@ -476,6 +640,7 @@ def main(page: ft.Page):
             expand=True,
             spacing=10,
             padding=20,
+            controls=[ft.Text(fac.name, color="#FFFFFF", on_click=select_faction) for fac in factions] # Populate on load
         )
 
         faction_detail_container = ft.Container(
@@ -505,6 +670,7 @@ def main(page: ft.Page):
                 factions.append(new_faction)
                 factions_list_view.controls.append(ft.Text(new_faction.name, color="#FFFFFF", on_click=select_faction))
                 faction_name_input.value = ""
+                save_factions() # Save factions after adding
                 page.update()
 
         return ft.Container(
@@ -566,6 +732,7 @@ def main(page: ft.Page):
         def save_lore_history(e):
             nonlocal lore_history_text
             lore_history_text = lore_history_text_field.value
+            save_lore_history() # Save lore history after modification
             page.update()
 
         return ft.Container(
@@ -610,6 +777,7 @@ def main(page: ft.Page):
         def save_bulletin_board(e):
             nonlocal bulletin_board_text
             bulletin_board_text = bulletin_board_text_field.value
+            save_bulletin_board() # Save bulletin board after modification
             page.update()
 
         return ft.Container(
@@ -654,6 +822,7 @@ def main(page: ft.Page):
         def save_timeline(e):
             nonlocal timeline_text
             timeline_text = timeline_text_field.value
+            save_timeline() # Save timeline after modification
             page.update()
 
         return ft.Container(
@@ -677,6 +846,14 @@ def main(page: ft.Page):
             expand=True,
             padding=20
         )
+
+    # Load all data on startup
+    load_characters()
+    load_locations()
+    load_factions()
+    load_lore_history()
+    load_bulletin_board()
+    load_timeline()
 
     # --- Main Content Area ---
     main_content_area = ft.Column([create_characters_view()], expand=True)
