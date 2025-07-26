@@ -1,5 +1,5 @@
 import flet as ft
-from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction, ValidationResult, CaseMeta, Item # Import all necessary dataclasses and enums
+from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction, ValidationResult, CaseMeta, Item, TimelineEvent # Import all necessary dataclasses and enums
 import uuid # For generating unique IDs
 import json # For JSON serialization
 import os # For path operations
@@ -22,11 +22,11 @@ def main(page: ft.Page):
     locations: list[Location] = []
     factions: list[Faction] = []
     districts: list[District] = []
-    items: list[Item] = [] # Added items list
+    items: list[Item] = []
     case_meta: CaseMeta = CaseMeta(victim="", culprit="", crimeScene="", murderWeapon="", coreMysterySolutionDetails="") # Initialize CaseMeta
     lore_history_text = ""
     bulletin_board_nodes = [] # Changed to store node data
-    timeline_text = ""
+    timeline_events: list[TimelineEvent] = [] # Changed to store TimelineEvent objects
     validation_results: list[ValidationResult] = []
 
     # --- File Paths ---
@@ -35,11 +35,11 @@ def main(page: ft.Page):
     LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
     FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
     DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json")
-    ITEMS_FILE = os.path.join(DATA_DIR, "items.json") # Added items file path
+    ITEMS_FILE = os.path.join(DATA_DIR, "items.json")
     CASE_META_FILE = os.path.join(DATA_DIR, "case_meta.json") # Added case meta file path
     LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
     BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.json") # Changed to JSON
-    TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.txt")
+    TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.json") # Changed to JSON
 
     # Ensure data directory exists
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -245,15 +245,30 @@ def main(page: ft.Page):
             with open(BULLETIN_BOARD_FILE, "r") as f:
                 bulletin_board_nodes = json.load(f)
 
-    def save_timeline():
+    def save_timeline_events(): # Added save_timeline_events function
         with open(TIMELINE_FILE, "w") as f:
-            f.write(timeline_text)
+            json.dump([event.__dict__ for event in timeline_events], f, indent=4)
 
-    def load_timeline():
-        nonlocal timeline_text
+    def load_timeline_events(): # Added load_timeline_events function
+        nonlocal timeline_events
         if os.path.exists(TIMELINE_FILE):
             with open(TIMELINE_FILE, "r") as f:
-                timeline_text = f.read()
+                data = json.load(f)
+                timeline_events.clear()
+                for item in data:
+                    timeline_events.append(TimelineEvent(
+                        id=item['id'],
+                        name=item['name'],
+                        description=item['description'],
+                        timestamp=item['timestamp'],
+                        associatedCharacters=item.get('associatedCharacters', []), # Default to empty list
+                        associatedLocations=item.get('associatedLocations', []), # Default to empty list
+                        associatedItems=item.get('associatedItems', []), # Default to empty list
+                        cluesGenerated=item.get('cluesGenerated', []), # Default to empty list
+                        revealsTruth=item.get('revealsTruth', False),
+                        revealsLie=item.get('revealsLie', False),
+                        lieDebunked=item.get('lieDebunked')
+                    ))
 
     # --- Validation Logic ---
     def run_validation():
@@ -317,6 +332,10 @@ def main(page: ft.Page):
 
         # Run checks for CaseMeta
         check_missing_required_fields([case_meta], "CaseMeta", ["victim", "culprit", "crimeScene", "murderWeapon", "coreMysterySolutionDetails"])
+
+        # Run checks for Timeline Events
+        check_duplicate_ids(timeline_events, "TimelineEvent")
+        check_missing_required_fields(timeline_events, "TimelineEvent", ["name", "description", "timestamp"])
 
         # Update Validator UI
         update_validator_ui()
@@ -915,1137 +934,6 @@ def main(page: ft.Page):
             expand=True
         )
 
-    # --- Content Views ---
-    # Declare these outside to make them accessible to save/delete functions
-    characters_list_view = ft.ListView(expand=True, spacing=10, padding=20)
-    character_detail_container = ft.Container(content=ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")]), expand=True, padding=20)
-
-    locations_list_view = ft.ListView(expand=True, spacing=10, padding=20)
-    location_detail_container = ft.Container(content=ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")]), expand=True, padding=20)
-
-    factions_list_view = ft.ListView(expand=True, spacing=10, padding=20)
-    faction_detail_container = ft.Container(content=ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")]), expand=True, padding=20)
-
-    districts_list_view = ft.ListView(expand=True, spacing=10, padding=20)
-    district_detail_container = ft.Container(content=ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")]), expand=True, padding=20)
-
-    items_list_view = ft.ListView(expand=True, spacing=10, padding=20)
-    item_detail_container = ft.Container(content=ft.Column([ft.Text("Select an item to view details", color="#9E9E9E")]), expand=True, padding=20)
-
-    def select_character(char):
-        character_detail_container.content = create_character_detail_view(char, characters_list_view, character_detail_container, select_character)
-        page.update()
-
-    def select_location(loc):
-        location_detail_container.content = create_location_detail_view(loc, locations_list_view, location_detail_container, select_location)
-        page.update()
-
-    def select_faction(fac):
-        faction_detail_container.content = create_faction_detail_view(fac, factions_list_view, faction_detail_container, select_faction)
-        page.update()
-
-    def select_district(dist):
-        district_detail_container.content = create_district_detail_view(dist, districts_list_view, district_detail_container, select_district)
-        page.update()
-
-    def select_item(item):
-        item_detail_container.content = create_item_detail_view(item, items_list_view, item_detail_container, select_item)
-        page.update()
-
-    def create_characters_view():
-        character_name_input = ft.TextField(
-            label="Character Name",
-            hint_text="Enter character's full name",
-            width=300,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6", # Light blue for focus
-            filled=True,
-            fill_color="#3A4D60",
-        )
-
-        # Populate on load
-        characters_list_view.controls.clear()
-        for char in characters:
-            characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(char.fullName, color="#FFFFFF"), on_tap=lambda e, char=char: select_character(char)))
-
-        def add_character(e):
-            if character_name_input.value:
-                # Create a new Character object with a unique ID and placeholder values
-                new_character = Character(
-                    id=str(uuid.uuid4()),
-                    fullName=character_name_input.value,
-                    biography="", # Placeholder
-                    personality="", # Placeholder
-                    alignment=Alignment.__args__[0], # Use first value from Literal as default
-                    honesty=50, # Placeholder
-                    victimLikelihood=50, # Placeholder
-                    killerLikelihood=50, # Placeholder
-                    gender=Gender.__args__[0], # Use first value from Literal as default
-                    wealthClass=WealthClass.__args__[0] # Use first value from Literal as default
-                )
-                characters.append(new_character)
-                characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_character.fullName, color="#FFFFFF"), on_tap=lambda e, char=new_character: select_character(char))) # Use GestureDetector
-                character_name_input.value = ""
-                save_characters() # Save characters after adding
-                run_validation() # Run validation after modification
-                page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Characters Management", color="#FFFFFF", size=20),
-                    ft.Text("List of characters and their details will go here.", color="#9E9E9E"),
-                    ft.Row(
-                        [
-                            character_name_input,
-                            ft.ElevatedButton(
-                                text="Add Character",
-                                icon=ft.Icons.ADD,
-                                bgcolor="#64B5F6", # Light blue button
-                                color="#FFFFFF",
-                                on_click=add_character
-                            ),
-                        ]
-                    ),
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=characters_list_view,
-                                expand=1,
-                                border=ft.border.all(1, "#3A4D60"),
-                                border_radius=5,
-                                padding=ft.padding.all(10)
-                            ),
-                            character_detail_container,
-                        ],
-                        expand=True
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    def create_locations_view():
-        location_name_input = ft.TextField(
-            label="Location Name",
-            hint_text="Enter location name",
-            width=300,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6", # Light blue for focus
-            filled=True,
-            fill_color="#3A4D60",
-        )
-
-        # Populate on load
-        locations_list_view.controls.clear()
-        for loc in locations:
-            locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(loc.name, color="#FFFFFF"), on_tap=lambda e, loc=loc: select_location(loc)))
-
-        def add_location(e):
-            if location_name_input.value:
-                new_location = Location(
-                    id=str(uuid.uuid4()),
-                    name=location_name_input.value,
-                    description="", # Placeholder
-                    type="", # Placeholder
-                    district="", # Placeholder
-                    owningFaction="", # Placeholder
-                    dangerLevel=1, # Placeholder
-                    population=0, # Placeholder
-                    accessibility="Public", # Placeholder
-                    hidden=False, # Placeholder
-                    internalLogicNotes="", # Placeholder
-                )
-                locations.append(new_location)
-                locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_location.name, color="#FFFFFF"), on_tap=lambda e, loc=new_location: select_location(loc))) # Use GestureDetector
-                location_name_input.value = ""
-                save_locations() # Save locations after adding
-                run_validation() # Run validation after modification
-                page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Locations Management", color="#FFFFFF", size=20),
-                    ft.Text("List of locations and their details will go here.", color="#9E9E9E"),
-                    ft.Row(
-                        [
-                            location_name_input,
-                            ft.ElevatedButton(
-                                text="Add Location",
-                                icon=ft.Icons.ADD,
-                                bgcolor="#64B5F6", # Light blue button
-                                color="#FFFFFF",
-                                on_click=add_location
-                            ),
-                        ]
-                    ),
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=locations_list_view,
-                                expand=1,
-                                border=ft.border.all(1, "#3A4D60"),
-                                border_radius=5,
-                                padding=ft.padding.all(10)
-                            ),
-                            location_detail_container,
-                        ],
-                        expand=True
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    def create_factions_view():
-        faction_name_input = ft.TextField(
-            label="Faction Name",
-            hint_text="Enter faction name",
-            width=300,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6", # Light blue for focus
-            filled=True,
-            fill_color="#3A4D60",
-        )
-
-        # Populate on load
-        factions_list_view.controls.clear()
-        for fac in factions:
-            factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(fac.name, color="#FFFFFF"), on_tap=lambda e, fac=fac: select_faction(fac)))
-
-        def add_faction(e):
-            if faction_name_input.value:
-                new_faction = Faction(
-                    id=str(uuid.uuid4()),
-                    name=faction_name_input.value,
-                    description="", # Placeholder
-                    archetype="", # Placeholder
-                    ideology="", # Placeholder
-                    headquarters="", # Placeholder
-                    publicPerception="", # Placeholder
-                )
-                factions.append(new_faction)
-                factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_faction.name, color="#FFFFFF"), on_tap=lambda e, fac=new_faction: select_faction(fac))) # Use GestureDetector
-                faction_name_input.value = ""
-                save_factions() # Save factions after adding
-                run_validation() # Run validation after modification
-                page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Factions Management", color="#FFFFFF", size=20),
-                    ft.Text("List of factions and their details will go here.", color="#9E9E9E"),
-                    ft.Row(
-                        [
-                            faction_name_input,
-                            ft.ElevatedButton(
-                                text="Add Faction",
-                                icon=ft.Icons.ADD,
-                                bgcolor="#64B5F6", # Light blue button
-                                color="#FFFFFF",
-                                on_click=add_faction
-                            ),
-                        ]
-                    ),
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=factions_list_view,
-                                expand=1,
-                                border=ft.border.all(1, "#3A4D60"),
-                                border_radius=5,
-                                padding=ft.padding.all(10)
-                            ),
-                            faction_detail_container,
-                        ],
-                        expand=True
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    def create_districts_view():
-        district_name_input = ft.TextField(
-            label="District Name",
-            hint_text="Enter district name",
-            width=300,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6", # Light blue for focus
-            filled=True,
-            fill_color="#3A4D60",
-        )
-
-        # Populate on load
-        districts_list_view.controls.clear()
-        for dist in districts:
-            districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(dist.name, color="#FFFFFF"), on_tap=lambda e, dist=dist: select_district(dist)))
-
-        def add_district(e):
-            if district_name_input.value:
-                new_district = District(
-                    id=str(uuid.uuid4()),
-                    name=district_name_input.value,
-                    description="", # Placeholder
-                    wealthClass=WealthClass.__args__[0], # Placeholder
-                    atmosphere="", # Placeholder
-                    populationDensity="Sparse", # Placeholder
-                    dominantFaction="", # Placeholder
-                )
-                districts.append(new_district)
-                districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_district.name, color="#FFFFFF"), on_tap=lambda e, dist=new_district: select_district(dist))) # Use GestureDetector
-                district_name_input.value = ""
-                save_districts() # Save districts after adding
-                run_validation() # Run validation after modification
-                page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Districts Management", color="#FFFFFF", size=20),
-                    ft.Text("List of districts and their details will go here.", color="#9E9E9E"),
-                    ft.Row(
-                        [
-                            district_name_input,
-                            ft.ElevatedButton(
-                                text="Add District",
-                                icon=ft.Icons.ADD,
-                                bgcolor="#64B5F6", # Light blue button
-                                color="#FFFFFF",
-                                on_click=add_district
-                            ),
-                        ]
-                    ),
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=districts_list_view,
-                                expand=1,
-                                border=ft.border.all(1, "#3A4D60"),
-                                border_radius=5,
-                                padding=ft.padding.all(10)
-                            ),
-                            district_detail_container,
-                        ],
-                        expand=True
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    def create_items_view(): # Added create_items_view
-        item_name_input = ft.TextField(
-            label="Item Name",
-            hint_text="Enter item name",
-            width=300,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6", # Light blue for focus
-            filled=True,
-            fill_color="#3A4D60",
-        )
-
-        # Populate on load
-        items_list_view.controls.clear()
-        for item_obj in items:
-            items_list_view.controls.append(ft.GestureDetector(content=ft.Text(item_obj.name, color="#FFFFFF"), on_tap=lambda e, item=item_obj: select_item(item)))
-
-        def add_item(e):
-            if item_name_input.value:
-                new_item = Item(
-                    id=str(uuid.uuid4()),
-                    name=item_name_input.value,
-                    description="", # Placeholder
-                    possibleMeans=False, # Placeholder
-                    possibleMotive=False, # Placeholder
-                    possibleOpportunity=False, # Placeholder
-                    cluePotential="None", # Placeholder
-                    value="", # Placeholder
-                    condition="New", # Placeholder
-                )
-                items.append(new_item)
-                items_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_item.name, color="#FFFFFF"), on_tap=lambda e, item=new_item: select_item(item))) # Use GestureDetector
-                item_name_input.value = ""
-                save_items() # Save items after adding
-                run_validation() # Run validation after modification
-                page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Items Management", color="#FFFFFF", size=20),
-                    ft.Text("List of items and their details will go here.", color="#9E9E9E"),
-                    ft.Row(
-                        [
-                            item_name_input,
-                            ft.ElevatedButton(
-                                text="Add Item",
-                                icon=ft.Icons.ADD,
-                                bgcolor="#64B5F6", # Light blue button
-                                color="#FFFFFF",
-                                on_click=add_item
-                            ),
-                        ]
-                    ),
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=items_list_view,
-                                expand=1,
-                                border=ft.border.all(1, "#3A4D60"),
-                                border_radius=5,
-                                padding=ft.padding.all(10)
-                            ),
-                            item_detail_container,
-                        ],
-                        expand=True
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    def create_lore_history_view():
-        lore_history_text_field = ft.TextField(
-            label="Lore and World History",
-            hint_text="Enter historical events, world lore, and background information here.",
-            multiline=True,
-            min_lines=10,
-            max_lines=20,
-            value=lore_history_text,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-            expand=True
-        )
-
-        def save_lore_history(e):
-            nonlocal lore_history_text
-            lore_history_text = lore_history_text_field.value
-            save_lore_history() # Save lore history after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Lore & World History", color="#FFFFFF", size=20),
-                    ft.Text("Timeline of events and world lore will go here.", color="#9E9E9E"),
-                    lore_history_text_field,
-                    ft.ElevatedButton(
-                        text="Save Lore & History",
-                        icon=ft.Icons.SAVE,
-                        bgcolor="#64B5F6",
-                        color="#FFFFFF",
-                        on_click=save_lore_history
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    def create_bulletin_board_view():
-        # Node data structure: {"id": "node1", "type": "character", "x": 100, "y": 100, "text": "Node 1 Text"}
-        # This will be populated from bulletin_board_nodes list
-        node_controls = []
-
-        def on_pan_update(e: ft.DragUpdateEvent, node_data):
-            node_data["x"] += e.delta_x
-            node_data["y"] += e.delta_y
-            e.control.top = node_data["y"]
-            e.control.left = node_data["x"]
-            e.control.update()
-
-        def create_draggable_node(node_data):
-            return ft.Container(
-                content=ft.Column(
-                    [
-                        ft.Text(node_data["text"], color="#FFFFFF"),
-                        # Add more node content here based on node_data["type"]
-                    ]
-                ),
-                width=150,
-                height=100,
-                bgcolor="#3A4D60",
-                border_radius=5,
-                padding=10,
-                top=node_data["y"],
-                left=node_data["x"],
-                data=node_data, # Store node data in the control
-                on_pan_update=lambda e: on_pan_update(e, node_data)
-            )
-
-        def add_node(e):
-            new_node_data = {"id": str(uuid.uuid4()), "type": "generic", "x": 50, "y": 50, "text": "New Node"}
-            bulletin_board_nodes.append(new_node_data)
-            node_controls.append(create_draggable_node(new_node_data))
-            save_bulletin_board_nodes()
-            page.update()
-
-        # Populate nodes from loaded data
-        for node_data in bulletin_board_nodes:
-            node_controls.append(create_draggable_node(node_data))
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Interactive Bulletin Board", color="#FFFFFF", size=20),
-                    ft.Text("Drag and drop nodes to organize your plot.", color="#9E9E9E"),
-                    ft.ElevatedButton(
-                        text="Add Node",
-                        icon=ft.Icons.ADD,
-                        bgcolor="#64B5F6",
-                        color="#FFFFFF",
-                        on_click=add_node
-                    ),
-                    ft.Container(
-                        content=ft.Stack(
-                            node_controls,
-                            expand=True
-                        ),
-                        expand=True,
-                        border=ft.border.all(1, "#3A4D60"),
-                        border_radius=5,
-                        clip_behavior=ft.ClipBehavior.HARD_EDGE, # Clip content outside bounds
-                        scroll=ft.ScrollMode.AUTO # Enable scrolling
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    def create_timeline_view():
-        timeline_text_field = ft.TextField(
-            label="Gamified Timeline Editor",
-            hint_text="Describe the event chain editor here.",
-            multiline=True,
-            min_lines=10,
-            max_lines=20,
-            value=timeline_text,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-            expand=True
-        )
-
-        def save_timeline(e):
-            nonlocal timeline_text
-            timeline_text = timeline_text_field.value
-            save_timeline() # Save timeline after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Gamified Timeline Editor", color="#FFFFFF", size=20),
-                    ft.Text("The event chain editor will go here.", color="#9E9E9E"),
-                    timeline_text_field,
-                    ft.ElevatedButton(
-                        text="Save Timeline",
-                        icon=ft.Icons.SAVE,
-                        bgcolor="#64B5F6",
-                        color="#FFFFFF",
-                        on_click=save_timeline
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
-        )
-
-    # --- Sample Data Population ---
-    def populate_sample_data():
-        # Clear existing data to avoid duplicates on re-run
-        characters.clear()
-        locations.clear()
-        factions.clear()
-        districts.clear()
-        items.clear()
-
-        # Sample Characters
-        char_john = Character(id="char-john", fullName="John Doe", biography="A mysterious detective.", personality="Stoic", alignment="Lawful Neutral", honesty=80, victimLikelihood=10, killerLikelihood=5)
-        char_jane = Character(id="char-jane", fullName="Jane Smith", biography="A cunning femme fatale.", personality="Manipulative", alignment="Chaotic Evil", honesty=20, victimLikelihood=60, killerLikelihood=90)
-        characters.extend([char_john, char_jane])
-
-        # Sample Locations
-        loc_office = Location(id="loc-office", name="Detective Agency Office", description="John's dusty office.", type="Office", district="Downtown", accessibility="Private")
-        loc_bar = Location(id="loc-bar", name="The Shady Mug", description="A dimly lit bar.", type="Bar", district="Downtown", accessibility="Public")
-        locations.extend([loc_office, loc_bar])
-
-        # Sample Factions
-        fac_mafia = Faction(id="fac-mafia", name="The Black Hand", description="Organized crime syndicate.", archetype="Criminal", ideology="Power", headquarters="The Warehouse")
-        factions.append(fac_mafia)
-
-        # Sample Districts
-        dist_downtown = District(id="dist-downtown", name="Downtown", description="The bustling city center.", wealthClass="Business Person", atmosphere="Gritty", populationDensity="Dense")
-        districts.append(dist_downtown)
-
-        # Sample Items
-        item_gun = Item(id="item-gun", name="Revolver", description="A rusty .38 revolver.", possibleMeans=True, possibleMotive=False, possibleOpportunity=True, cluePotential="High", value="Low", condition="Worn")
-        item_letter = Item(id="item-letter", name="Anonymous Letter", description="A threatening letter.", possibleMeans=False, possibleMotive=True, possibleOpportunity=False, cluePotential="Critical", value="N/A", condition="New")
-        items.extend([item_gun, item_letter])
-
-        # Sample CaseMeta (linking to sample data)
-        nonlocal case_meta
-        case_meta = CaseMeta(
-            victim=char_john.id,
-            culprit=char_jane.id,
-            crimeScene=loc_office.id,
-            murderWeapon=item_gun.id,
-            coreMysterySolutionDetails="John was killed by Jane with the revolver in his office due to a business dispute.",
-            murderWeaponHidden=False,
-            meansClue="The revolver was found at the scene.",
-            motiveClue="A letter detailing the dispute was found.",
-            opportunityClue="Jane was seen entering the office earlier.",
-            narrativeViewpoint="Third-Limited (Sleuth)",
-            narrativeTense="Past",
-            openingMonologue="The rain lashed against the window...",
-            ultimateRevealSceneDescription="Jane confessed in a dramatic monologue.",
-            successfulDenouement="Justice was served.",
-            failedDenouement="Jane escaped justice."
-        )
-
-        # Save all populated data
-        save_characters()
-        save_locations()
-        save_factions()
-        save_districts()
-        save_items()
-        save_case_meta()
-
-    # Load all data on startup
-    load_characters()
-    load_locations()
-    load_factions()
-    load_districts()
-    load_items()
-    load_case_meta()
-    load_lore_history()
-    load_bulletin_board_nodes()
-    load_timeline()
-
-    # Populate sample data if no characters exist (simple check to avoid overwriting existing data)
-    if not characters:
-        populate_sample_data()
-
-    # Run initial validation
-    run_validation()
-
-    # --- Character Detail View ---
-    def create_character_detail_view(character: Character, characters_list_view, character_detail_container, select_character):
-        # Create TextField controls for each editable field
-        full_name_field = ft.TextField(label="Full Name", value=character.fullName, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        biography_field = ft.TextField(label="Biography", value=character.biography, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        personality_field = ft.TextField(label="Personality", value=character.personality, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        alignment_field = ft.Dropdown(
-            label="Alignment",
-            value=character.alignment,
-            options=[ft.dropdown.Option(align) for align in Alignment.__args__],
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-        )
-        honesty_field = ft.TextField(label="Honesty", value=str(character.honesty), keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        victim_likelihood_field = ft.TextField(label="Victim Likelihood", value=str(character.victimLikelihood), keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        killer_likelihood_field = ft.TextField(label="Killer Likelihood", value=str(character.killerLikelihood), keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        gender_field = ft.Dropdown(
-            label="Gender",
-            value=character.gender,
-            options=[ft.dropdown.Option(g) for g in Gender.__args__],
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-        )
-        wealth_class_field = ft.Dropdown(
-            label="Wealth Class",
-            value=character.wealthClass,
-            options=[ft.dropdown.Option(wc) for wc in WealthClass.__args__],
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-        )
-        alias_field = ft.TextField(label="Alias", value=character.alias, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        age_field = ft.TextField(label="Age", value=str(character.age) if character.age else "", keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        employment_field = ft.TextField(label="Employment", value=character.employment, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=character.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        faction_field = ft.TextField(label="Faction", value=character.faction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        district_field = ft.TextField(label="District", value=character.district, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        motivations_field = ft.TextField(label="Motivations (comma-separated)", value=", ".join(character.motivations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        secrets_field = ft.TextField(label="Secrets (comma-separated)", value=", ".join(character.secrets), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        allies_field = ft.TextField(label="Allies (comma-separated IDs)", value=", ".join(character.allies), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        enemies_field = ft.TextField(label="Enemies (comma-separated IDs)", value=", ".join(character.enemies), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        items_field = ft.TextField(label="Items (comma-separated IDs)", value=", ".join(character.items), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        archetype_field = ft.TextField(label="Archetype", value=character.archetype, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        values_field = ft.TextField(label="Values (comma-separated)", value=", ".join(character.values), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        flaws_field = ft.TextField(label="Flaws/Limitations (comma-separated)", value=", ".join(character.flawsHandicapsLimitations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        quirks_field = ft.TextField(label="Quirks (comma-separated)", value=", ".join(character.quirks), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        characteristics_field = ft.TextField(label="Characteristics (comma-separated)", value=", ".join(character.characteristics), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        vulnerabilities_field = ft.TextField(label="Vulnerabilities (comma-separated)", value=", ".join(character.vulnerabilities), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        voice_model_field = ft.TextField(label="Voice Model", value=character.voiceModel, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        dialogue_style_field = ft.TextField(label="Dialogue Style", value=character.dialogueStyle, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        expertise_field = ft.TextField(label="Expertise (comma-separated)", value=", ".join(character.expertise), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        portrayal_notes_field = ft.TextField(label="Portrayal Notes", value=character.portrayalNotes, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-
-        def save_character_details(e):
-            character.fullName = full_name_field.value
-            character.biography = biography_field.value
-            character.personality = personality_field.value
-            character.alignment = alignment_field.value
-            character.honesty = int(honesty_field.value)
-            character.victimLikelihood = int(victim_likelihood_field.value)
-            character.killerLikelihood = int(killer_likelihood_field.value)
-            character.gender = gender_field.value if gender_field.value else None
-            character.wealthClass = wealth_class_field.value if wealth_class_field.value else None
-            character.alias = alias_field.value
-            character.age = int(age_field.value) if age_field.value else None
-            character.employment = employment_field.value
-            character.image = image_field.value
-            character.faction = faction_field.value
-            character.district = district_field.value
-            character.motivations = [m.strip() for m in motivations_field.value.split(',') if m.strip()]
-            character.secrets = [s.strip() for s in secrets_field.value.split(',') if s.strip()]
-            character.allies = [a.strip() for a in allies_field.value.split(',') if a.strip()]
-            character.enemies = [en.strip() for en in enemies_field.value.split(',') if en.strip()]
-            character.items = [it.strip() for it in items_field.value.split(',') if it.strip()]
-            character.archetype = archetype_field.value
-            character.values = [v.strip() for v in values_field.value.split(',') if v.strip()]
-            character.flawsHandicapsLimitations = [f.strip() for f in flaws_field.value.split(',') if f.strip()]
-            character.quirks = [q.strip() for q in quirks_field.value.split(',') if q.strip()]
-            character.characteristics = [c.strip() for c in characteristics_field.value.split(',') if c.strip()]
-            character.vulnerabilities = [v.strip() for v in vulnerabilities_field.value.split(',') if v.strip()]
-            character.voiceModel = voice_model_field.value
-            character.dialogueStyle = dialogue_style_field.value
-            character.expertise = [e.strip() for e in expertise_field.value.split(',') if e.strip()]
-            character.portrayalNotes = portrayal_notes_field.value
-
-            # Update the character list view to reflect name changes
-            characters_list_view.controls.clear()
-            for char_item in characters:
-                characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(char_item.fullName, color="#FFFFFF"), on_tap=lambda e, char=char_item: select_character(char))) # Use GestureDetector
-            save_characters() # Save characters after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        def delete_character(e):
-            characters.remove(character)
-            characters_list_view.controls.clear()
-            for char_item in characters:
-                characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(char_item.fullName, color="#FFFFFF"), on_tap=lambda e, char=char_item: select_character(char))) # Use GestureDetector
-            character_detail_container.content = ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")])
-            save_characters() # Save characters after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        return ft.Column(
-            [
-                ft.Text(f"Character Details: {character.fullName}", color="#FFFFFF", size=20),
-                full_name_field,
-                alias_field,
-                age_field,
-                gender_field,
-                employment_field,
-                image_field,
-                faction_field,
-                wealth_class_field,
-                district_field,
-                biography_field,
-                personality_field,
-                alignment_field,
-                honesty_field,
-                victim_likelihood_field,
-                killer_likelihood_field,
-                motivations_field,
-                secrets_field,
-                allies_field,
-                enemies_field,
-                items_field,
-                archetype_field,
-                values_field,
-                flaws_field,
-                quirks_field,
-                characteristics_field,
-                vulnerabilities_field,
-                voice_model_field,
-                dialogue_style_field,
-                expertise_field,
-                portrayal_notes_field,
-                ft.Row(
-                    [
-                        ft.ElevatedButton(
-                            text="Save Changes",
-                            icon=ft.Icons.SAVE,
-                            bgcolor="#64B5F6",
-                            color="#FFFFFF",
-                            on_click=save_character_details
-                        ),
-                        ft.ElevatedButton(
-                            text="Delete Character",
-                            icon=ft.Icons.DELETE,
-                            bgcolor="#FF5252", # Red for delete
-                            color="#FFFFFF",
-                            on_click=delete_character
-                        ),
-                    ]
-                )
-            ],
-            scroll=ft.ScrollMode.ADAPTIVE,
-            expand=True
-        )
-
-    # --- Location Detail View ---
-    def create_location_detail_view(location: Location, locations_list_view, location_detail_container, select_location):
-        # Create TextField controls for each editable field
-        name_field = ft.TextField(label="Name", value=location.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        description_field = ft.TextField(label="Description", value=location.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        type_field = ft.TextField(label="Type", value=location.type, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        district_field = ft.TextField(label="District", value=location.district, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        owning_faction_field = ft.TextField(label="Owning Faction", value=location.owningFaction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        danger_level_field = ft.TextField(label="Danger Level", value=str(location.dangerLevel), keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        population_field = ft.TextField(label="Population", value=str(location.population), keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        accessibility_field = ft.Dropdown(
-            label="Accessibility",
-            value=location.accessibility,
-            options=[ft.dropdown.Option("Public"), ft.dropdown.Option("Semi-Private"), ft.dropdown.Option("Private"), ft.dropdown.Option("Restricted")],
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-        )
-        hidden_field = ft.Checkbox(label="Hidden", value=location.hidden, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
-        internal_logic_notes_field = ft.TextField(label="Internal Logic Notes", value=location.internalLogicNotes, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=location.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        key_characters_field = ft.TextField(label="Key Characters (comma-separated IDs)", value=", ".join(location.keyCharacters), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        associated_items_field = ft.TextField(label="Associated Items (comma-separated IDs)", value=", ".join(location.associatedItems), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        clues_field = ft.TextField(label="Clues (comma-separated IDs)", value=", ".join(location.clues), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-
-        def save_location_details(e):
-            location.name = name_field.value
-            location.description = description_field.value
-            location.type = type_field.value
-            location.district = district_field.value
-            location.owningFaction = owning_faction_field.value
-            location.dangerLevel = int(danger_level_field.value) if danger_level_field.value else None
-            location.population = int(population_field.value) if population_field.value else None
-            location.accessibility = accessibility_field.value
-            location.hidden = hidden_field.value
-            location.internalLogicNotes = internal_logic_notes_field.value
-            location.image = image_field.value
-            location.keyCharacters = [kc.strip() for kc in key_characters_field.value.split(',') if kc.strip()]
-            location.associatedItems = [ai.strip() for ai in associated_items_field.value.split(',') if ai.strip()]
-            location.clues = [c.strip() for c in clues_field.value.split(',') if c.strip()]
-
-            # Update the location list view to reflect name changes
-            locations_list_view.controls.clear()
-            for loc_item in locations:
-                locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(loc_item.name, color="#FFFFFF"), on_tap=lambda e, loc=loc_item: select_location(loc))) # Use GestureDetector
-            save_locations() # Save locations after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        def delete_location(e):
-            locations.remove(location)
-            locations_list_view.controls.clear()
-            for loc_item in locations:
-                locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(loc_item.name, color="#FFFFFF"), on_tap=lambda e, loc=loc_item: select_location(loc))) # Use GestureDetector
-            location_detail_container.content = ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")])
-            save_locations() # Save locations after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        return ft.Column(
-            [
-                ft.Text(f"Location Details: {location.name}", color="#FFFFFF", size=20),
-                name_field,
-                description_field,
-                type_field,
-                district_field,
-                owning_faction_field,
-                danger_level_field,
-                population_field,
-                image_field,
-                key_characters_field,
-                associated_items_field,
-                accessibility_field,
-                hidden_field,
-                internal_logic_notes_field,
-                clues_field,
-                ft.Row(
-                    [
-                        ft.ElevatedButton(
-                            text="Save Changes",
-                            icon=ft.Icons.SAVE,
-                            bgcolor="#64B5F6",
-                            color="#FFFFFF",
-                            on_click=save_location_details
-                        ),
-                        ft.ElevatedButton(
-                            text="Delete Location",
-                            icon=ft.Icons.DELETE,
-                            bgcolor="#FF5252", # Red for delete
-                            color="#FFFFFF",
-                            on_click=delete_location
-                        ),
-                    ]
-                )
-            ],
-            scroll=ft.ScrollMode.ADAPTIVE,
-            expand=True
-        )
-
-    # --- Faction Detail View ---
-    def create_faction_detail_view(faction: Faction, factions_list_view, faction_detail_container, select_faction):
-        # Create TextField controls for each editable field
-        name_field = ft.TextField(label="Name", value=faction.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        description_field = ft.TextField(label="Description", value=faction.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        archetype_field = ft.TextField(label="Archetype", value=faction.archetype, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        ideology_field = ft.TextField(label="Ideology", value=faction.ideology, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        headquarters_field = ft.TextField(label="Headquarters", value=faction.headquarters, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        public_perception_field = ft.TextField(label="Public Perception", value=faction.publicPerception, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=faction.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        resources_field = ft.TextField(label="Resources (comma-separated)", value=", ".join(faction.resources), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        ally_factions_field = ft.TextField(label="Ally Factions (comma-separated IDs)", value=", ".join(faction.allyFactions), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        enemy_factions_field = ft.TextField(label="Enemy Factions (comma-separated IDs)", value=", ".join(faction.enemyFactions), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        members_field = ft.TextField(label="Members (comma-separated IDs)", value=", ".join(faction.members), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        influence_field = ft.Dropdown(
-            label="Influence",
-            value=faction.influence,
-            options=[ft.dropdown.Option("Local"), ft.dropdown.Option("District-wide"), ft.dropdown.Option("City-wide"), ft.dropdown.Option("Regional"), ft.dropdown.Option("Global")],
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-        )
-
-        def save_faction_details(e):
-            faction.name = name_field.value
-            faction.description = description_field.value
-            faction.archetype = archetype_field.value
-            faction.ideology = ideology_field.value
-            faction.headquarters = headquarters_field.value
-            faction.publicPerception = public_perception_field.value
-            faction.image = image_field.value
-            faction.resources = [r.strip() for r in resources_field.value.split(',') if r.strip()]
-            faction.allyFactions = [af.strip() for af in ally_factions_field.value.split(',') if af.strip()]
-            faction.enemyFactions = [ef.strip() for ef in enemy_factions_field.value.split(',') if ef.strip()]
-            faction.members = [m.strip() for m in members_field.value.split(',') if m.strip()]
-            faction.influence = influence_field.value
-
-            # Update the faction list view to reflect name changes
-            factions_list_view.controls.clear()
-            for fac_item in factions:
-                factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(fac_item.name, color="#FFFFFF"), on_tap=lambda e, fac=fac_item: select_faction(fac))) # Use GestureDetector
-            save_factions() # Save factions after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        def delete_faction(e):
-            factions.remove(faction)
-            factions_list_view.controls.clear()
-            for fac_item in factions:
-                factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(fac_item.name, color="#FFFFFF"), on_tap=lambda e, fac=fac_item: select_faction(fac))) # Use GestureDetector
-            faction_detail_container.content = ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")])
-            save_factions() # Save factions after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        return ft.Column(
-            [
-                ft.Text(f"Faction Details: {faction.name}", color="#FFFFFF", size=20),
-                name_field,
-                description_field,
-                archetype_field,
-                ideology_field,
-                headquarters_field,
-                image_field,
-                resources_field,
-                ally_factions_field,
-                enemy_factions_field,
-                members_field,
-                influence_field,
-                public_perception_field,
-                ft.Row(
-                    [
-                        ft.ElevatedButton(
-                            text="Save Changes",
-                            icon=ft.Icons.SAVE,
-                            bgcolor="#64B5F6",
-                            color="#FFFFFF",
-                            on_click=save_faction_details
-                        ),
-                        ft.ElevatedButton(
-                            text="Delete Faction",
-                            icon=ft.Icons.DELETE,
-                            bgcolor="#FF5252", # Red for delete
-                            color="#FFFFFF",
-                            on_click=delete_faction
-                        ),
-                    ]
-                )
-            ],
-            scroll=ft.ScrollMode.ADAPTIVE,
-            expand=True
-        )
-
-    # --- District Detail View ---
-    def create_district_detail_view(district: District, districts_list_view, district_detail_container, select_district):
-        # Create TextField controls for each editable field
-        name_field = ft.TextField(label="Name", value=district.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        description_field = ft.TextField(label="Description", value=district.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        wealth_class_field = ft.Dropdown(
-            label="Wealth Class",
-            value=district.wealthClass,
-            options=[ft.dropdown.Option(wc) for wc in WealthClass.__args__],
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-        )
-        atmosphere_field = ft.TextField(label="Atmosphere", value=district.atmosphere, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        population_density_field = ft.Dropdown(
-            label="Population Density",
-            value=district.populationDensity,
-            options=[ft.dropdown.Option("Sparse"), ft.dropdown.Option("Moderate"), ft.dropdown.Option("Dense"), ft.dropdown.Option("Crowded")],
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-        )
-        dominant_faction_field = ft.TextField(label="Dominant Faction", value=district.dominantFaction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=district.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        notable_features_field = ft.TextField(label="Notable Features (comma-separated)", value=", ".join(district.notableFeatures), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        key_locations_field = ft.TextField(label="Key Locations (comma-separated IDs)", value=", ".join(district.keyLocations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-
-        def save_district_details(e):
-            district.name = name_field.value
-            district.description = description_field.value
-            district.wealthClass = wealth_class_field.value if wealth_class_field.value else None
-            district.atmosphere = atmosphere_field.value
-            district.populationDensity = population_density_field.value if population_density_field.value else None
-            district.dominantFaction = dominant_faction_field.value
-            district.image = image_field.value
-            district.notableFeatures = [nf.strip() for nf in notable_features_field.value.split(',') if nf.strip()]
-            district.keyLocations = [kl.strip() for kl in key_locations_field.value.split(',') if kl.strip()]
-
-            # Update the district list view to reflect name changes
-            districts_list_view.controls.clear()
-            for dist_item in districts:
-                districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(dist_item.name, color="#FFFFFF"), on_tap=lambda e, dist=dist_item: select_district(dist))) # Use GestureDetector
-            save_districts() # Save districts after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        def delete_district(e):
-            districts.remove(district)
-            districts_list_view.controls.clear()
-            for dist_item in districts:
-                districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(dist_item.name, color="#FFFFFF"), on_tap=lambda e, dist=dist_item: select_district(dist))) # Use GestureDetector
-            district_detail_container.content = ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")])
-            save_districts() # Save districts after modification
-            run_validation() # Run validation after modification
-            page.update()
-
-        return ft.Column(
-            [
-                ft.Text(f"District Details: {district.name}", color="#FFFFFF", size=20),
-                name_field,
-                description_field,
-                wealth_class_field,
-                atmosphere_field,
-                population_density_field,
-                dominant_faction_field,
-                image_field,
-                notable_features_field,
-                key_locations_field,
-                ft.Row(
-                    [
-                        ft.ElevatedButton(
-                            text="Save Changes",
-                            icon=ft.Icons.SAVE,
-                            bgcolor="#64B5F6",
-                            color="#FFFFFF",
-                            on_click=save_district_details
-                        ),
-                        ft.ElevatedButton(
-                            text="Delete District",
-                            icon=ft.Icons.DELETE,
-                            bgcolor="#FF5252", # Red for delete
-                            color="#FFFFFF",
-                            on_click=delete_district
-                        ),
-                    ]
-                )
-            ],
-            scroll=ft.ScrollMode.ADAPTIVE,
-            expand=True
-        )
-
     # --- Item Detail View ---
     def create_item_detail_view(item: Item, items_list_view, item_detail_container, select_item):
         name_field = ft.TextField(label="Name", value=item.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -2176,6 +1064,9 @@ def main(page: ft.Page):
     items_list_view = ft.ListView(expand=True, spacing=10, padding=20)
     item_detail_container = ft.Container(content=ft.Column([ft.Text("Select an item to view details", color="#9E9E9E")]), expand=True, padding=20)
 
+    timeline_events_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    timeline_event_detail_container = ft.Container(content=ft.Column([ft.Text("Select a timeline event to view details", color="#9E9E9E")]), expand=True, padding=20)
+
     def select_character(char):
         character_detail_container.content = create_character_detail_view(char, characters_list_view, character_detail_container, select_character)
         page.update()
@@ -2194,6 +1085,10 @@ def main(page: ft.Page):
 
     def select_item(item):
         item_detail_container.content = create_item_detail_view(item, items_list_view, item_detail_container, select_item)
+        page.update()
+
+    def select_timeline_event(event):
+        timeline_event_detail_container.content = create_timeline_event_detail_view(event, timeline_events_list_view, timeline_event_detail_container, select_timeline_event)
         page.update()
 
     def create_characters_view():
@@ -2701,42 +1596,146 @@ def main(page: ft.Page):
             padding=20
         )
 
-    def create_timeline_view():
-        timeline_text_field = ft.TextField(
-            label="Gamified Timeline Editor",
-            hint_text="Describe the event chain editor here.",
-            multiline=True,
-            min_lines=10,
-            max_lines=20,
-            value=timeline_text,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
+    # --- Timeline Event Detail View ---
+    def create_timeline_event_detail_view(event: TimelineEvent, timeline_events_list_view, timeline_event_detail_container, select_timeline_event):
+        name_field = ft.TextField(label="Event Name", value=event.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        description_field = ft.TextField(label="Description", value=event.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        timestamp_field = ft.TextField(label="Timestamp", value=event.timestamp, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        associated_characters_field = ft.TextField(label="Associated Characters (comma-separated IDs)", value=", ".join(event.associatedCharacters), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        associated_locations_field = ft.TextField(label="Associated Locations (comma-separated IDs)", value=", ".join(event.associatedLocations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        associated_items_field = ft.TextField(label="Associated Items (comma-separated IDs)", value=", ".join(event.associatedItems), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        clues_generated_field = ft.TextField(label="Clues Generated (comma-separated IDs)", value=", ".join(event.cluesGenerated), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        reveals_truth_field = ft.Checkbox(label="Reveals Truth", value=event.revealsTruth, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
+        reveals_lie_field = ft.Checkbox(label="Reveals Lie", value=event.revealsLie, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
+        lie_debunked_field = ft.TextField(label="Lie Debunked ID", value=event.lieDebunked, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+
+        def save_timeline_event_details(e):
+            event.name = name_field.value
+            event.description = description_field.value
+            event.timestamp = timestamp_field.value
+            event.associatedCharacters = [c.strip() for c in associated_characters_field.value.split(',') if c.strip()]
+            event.associatedLocations = [l.strip() for l in associated_locations_field.value.split(',') if l.strip()]
+            event.associatedItems = [i.strip() for i in associated_items_field.value.split(',') if i.strip()]
+            event.cluesGenerated = [cg.strip() for cg in clues_generated_field.value.split(',') if cg.strip()]
+            event.revealsTruth = reveals_truth_field.value
+            event.revealsLie = reveals_lie_field.value
+            event.lieDebunked = lie_debunked_field.value
+
+            timeline_events_list_view.controls.clear()
+            for event_obj in timeline_events:
+                timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(event_obj.name, color="#FFFFFF"), on_tap=lambda e, event=event_obj: select_timeline_event(event))) # Use GestureDetector
+            save_timeline_events()
+            run_validation()
+            page.update()
+
+        def delete_timeline_event(e):
+            timeline_events.remove(event)
+            timeline_events_list_view.controls.clear()
+            for event_obj in timeline_events:
+                timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(event_obj.name, color="#FFFFFF"), on_tap=lambda e, event=event_obj: select_timeline_event(event))) # Use GestureDetector
+            timeline_event_detail_container.content = ft.Column([ft.Text("Select a timeline event to view details", color="#9E9E9E")])
+            save_timeline_events()
+            run_validation()
+            page.update()
+
+        return ft.Column(
+            [
+                ft.Text(f"Timeline Event Details: {event.name}", color="#FFFFFF", size=20),
+                name_field,
+                description_field,
+                timestamp_field,
+                associated_characters_field,
+                associated_locations_field,
+                associated_items_field,
+                clues_generated_field,
+                reveals_truth_field,
+                reveals_lie_field,
+                lie_debunked_field,
+                ft.Row(
+                    [
+                        ft.ElevatedButton(
+                            text="Save Changes",
+                            icon=ft.Icons.SAVE,
+                            bgcolor="#64B5F6",
+                            color="#FFFFFF",
+                            on_click=save_timeline_event_details
+                        ),
+                        ft.ElevatedButton(
+                            text="Delete Event",
+                            icon=ft.Icons.DELETE,
+                            bgcolor="#FF5252", # Red for delete
+                            color="#FFFFFF",
+                            on_click=delete_timeline_event
+                        ),
+                    ]
+                )
+            ],
+            scroll=ft.ScrollMode.ADAPTIVE,
             expand=True
         )
 
-        def save_timeline(e):
-            nonlocal timeline_text
-            timeline_text = timeline_text_field.value
-            save_timeline() # Save timeline after modification
-            run_validation() # Run validation after modification
-            page.update()
+    def create_timeline_view():
+        timeline_name_input = ft.TextField(
+            label="Event Name",
+            hint_text="Enter event name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        timeline_events_list_view.controls.clear()
+        for event_obj in timeline_events:
+            timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(event_obj.name, color="#FFFFFF"), on_tap=lambda e, event=event_obj: select_timeline_event(event)))
+
+        def add_timeline_event(e):
+            if timeline_name_input.value:
+                new_event = TimelineEvent(
+                    id=str(uuid.uuid4()),
+                    name=timeline_name_input.value,
+                    description="", # Placeholder
+                    timestamp="", # Placeholder
+                )
+                timeline_events.append(new_event)
+                timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_event.name, color="#FFFFFF"), on_tap=lambda e, event=new_event: select_timeline_event(event))) # Use GestureDetector
+                timeline_name_input.value = ""
+                save_timeline_events()
+                run_validation()
+                page.update()
 
         return ft.Container(
             content=ft.Column(
                 [
                     ft.Text("Gamified Timeline Editor", color="#FFFFFF", size=20),
-                    ft.Text("The event chain editor will go here.", color="#9E9E9E"),
-                    timeline_text_field,
-                    ft.ElevatedButton(
-                        text="Save Timeline",
-                        icon=ft.Icons.SAVE,
-                        bgcolor="#64B5F6",
-                        color="#FFFFFF",
-                        on_click=save_timeline
+                    ft.Text("List of timeline events and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            timeline_name_input,
+                            ft.ElevatedButton(
+                                text="Add Event",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6",
+                                color="#FFFFFF",
+                                on_click=add_timeline_event
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=timeline_events_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            timeline_event_detail_container,
+                        ],
+                        expand=True
                     )
                 ],
                 expand=True,
@@ -2747,66 +1746,6 @@ def main(page: ft.Page):
             padding=20
         )
 
-    # --- Sample Data Population ---
-    def populate_sample_data():
-        # Clear existing data to avoid duplicates on re-run
-        characters.clear()
-        locations.clear()
-        factions.clear()
-        districts.clear()
-        items.clear()
-
-        # Sample Characters
-        char_john = Character(id="char-john", fullName="John Doe", biography="A mysterious detective.", personality="Stoic", alignment="Lawful Neutral", honesty=80, victimLikelihood=10, killerLikelihood=5)
-        char_jane = Character(id="char-jane", fullName="Jane Smith", biography="A cunning femme fatale.", personality="Manipulative", alignment="Chaotic Evil", honesty=20, victimLikelihood=60, killerLikelihood=90)
-        characters.extend([char_john, char_jane])
-
-        # Sample Locations
-        loc_office = Location(id="loc-office", name="Detective Agency Office", description="John's dusty office.", type="Office", district="Downtown", accessibility="Private")
-        loc_bar = Location(id="loc-bar", name="The Shady Mug", description="A dimly lit bar.", type="Bar", district="Downtown", accessibility="Public")
-        locations.extend([loc_office, loc_bar])
-
-        # Sample Factions
-        fac_mafia = Faction(id="fac-mafia", name="The Black Hand", description="Organized crime syndicate.", archetype="Criminal", ideology="Power", headquarters="The Warehouse")
-        factions.append(fac_mafia)
-
-        # Sample Districts
-        dist_downtown = District(id="dist-downtown", name="Downtown", description="The bustling city center.", wealthClass="Business Person", atmosphere="Gritty", populationDensity="Dense")
-        districts.append(dist_downtown)
-
-        # Sample Items
-        item_gun = Item(id="item-gun", name="Revolver", description="A rusty .38 revolver.", possibleMeans=True, possibleMotive=False, possibleOpportunity=True, cluePotential="High", value="Low", condition="Worn")
-        item_letter = Item(id="item-letter", name="Anonymous Letter", description="A threatening letter.", possibleMeans=False, possibleMotive=True, possibleOpportunity=False, cluePotential="Critical", value="N/A", condition="New")
-        items.extend([item_gun, item_letter])
-
-        # Sample CaseMeta (linking to sample data)
-        nonlocal case_meta
-        case_meta = CaseMeta(
-            victim=char_john.id,
-            culprit=char_jane.id,
-            crimeScene=loc_office.id,
-            murderWeapon=item_gun.id,
-            coreMysterySolutionDetails="John was killed by Jane with the revolver in his office due to a business dispute.",
-            murderWeaponHidden=False,
-            meansClue="The revolver was found at the scene.",
-            motiveClue="A letter detailing the dispute was found.",
-            opportunityClue="Jane was seen entering the office earlier.",
-            narrativeViewpoint="Third-Limited (Sleuth)",
-            narrativeTense="Past",
-            openingMonologue="The rain lashed against the window...",
-            ultimateRevealSceneDescription="Jane confessed in a dramatic monologue.",
-            successfulDenouement="Justice was served.",
-            failedDenouement="Jane escaped justice."
-        )
-
-        # Save all populated data
-        save_characters()
-        save_locations()
-        save_factions()
-        save_districts()
-        save_items()
-        save_case_meta()
-
     # Load all data on startup
     load_characters()
     load_locations()
@@ -2816,7 +1755,7 @@ def main(page: ft.Page):
     load_case_meta()
     load_lore_history()
     load_bulletin_board_nodes()
-    load_timeline()
+    load_timeline_events()
 
     # Populate sample data if no characters exist (simple check to avoid overwriting existing data)
     if not characters:

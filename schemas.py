@@ -240,6 +240,20 @@ class Clue:
     associatedCharacter: Optional[str] = None
 
 @dataclass
+class TimelineEvent:
+    id: str
+    name: str
+    description: str
+    timestamp: str # Using string for simplicity, could be datetime object
+    associatedCharacters: List[str] = field(default_factory=list)
+    associatedLocations: List[str] = field(default_factory=list)
+    associatedItems: List[str] = field(default_factory=list)
+    cluesGenerated: List[str] = field(default_factory=list)
+    revealsTruth: bool = False
+    revealsLie: bool = False
+    lieDebunked: Optional[str] = None # ID of the lie debunked
+
+@dataclass
 class ValidationResult:
     message: str
     type: Literal["error", "warning"]
@@ -254,3 +268,4 @@ class CaseData:
     keySuspects: List[CaseSuspect] = field(default_factory=list)
     caseLocations: List[CaseLocation] = field(default_factory=list)
     clues: List[Clue] = field(default_factory=list)
+    timeline: List[TimelineEvent] = field(default_factory=list)
