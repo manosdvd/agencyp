@@ -1,5 +1,5 @@
 import flet as ft
-from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction # Import all necessary dataclasses and enums
+from schemas import Character, Alignment, Gender, WealthClass, Location, District, Faction, ValidationResult # Import all necessary dataclasses and enums
 import uuid # For generating unique IDs
 import json # For JSON serialization
 import os # For path operations
@@ -21,17 +21,18 @@ def main(page: ft.Page):
     characters: list[Character] = []
     locations: list[Location] = []
     factions: list[Faction] = []
-    districts: list[District] = [] # Added districts list
+    districts: list[District] = []
     lore_history_text = ""
     bulletin_board_text = ""
     timeline_text = ""
+    validation_results: list[ValidationResult] = []
 
     # --- File Paths ---
     DATA_DIR = "./data"
     CHARACTERS_FILE = os.path.join(DATA_DIR, "characters.json")
     LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
     FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
-    DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json") # Added districts file path
+    DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json")
     LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
     BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.txt")
     TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.txt")
@@ -140,11 +141,11 @@ def main(page: ft.Page):
                         publicPerception=item.get('publicPerception')
                     ))
 
-    def save_districts(): # Added save_districts function
+    def save_districts():
         with open(DISTRICTS_FILE, "w") as f:
             json.dump([dist.__dict__ for dist in districts], f, indent=4)
 
-    def load_districts(): # Added load_districts function
+    def load_districts():
         if os.path.exists(DISTRICTS_FILE):
             with open(DISTRICTS_FILE, "r") as f:
                 data = json.load(f)
@@ -193,14 +194,102 @@ def main(page: ft.Page):
             with open(TIMELINE_FILE, "r") as f:
                 timeline_text = f.read()
 
+    # --- Validation Logic ---
+    def run_validation():
+        validation_results.clear()
+
+        # Helper to check for duplicate IDs
+        def check_duplicate_ids(asset_list, asset_type_name):
+            ids = set()
+            for asset in asset_list:
+                if asset.id in ids:
+                    validation_results.append(ValidationResult(
+                        message=f"Duplicate ID found for {asset_type_name}: {asset.id}",
+                        type="error",
+                        asset_id=asset.id,
+                        asset_type=asset_type_name,
+                        field_name="id"
+                    ))
+                else:
+                    ids.add(asset.id)
+
+        # Helper to check for missing required fields
+        def check_missing_required_fields(asset_list, asset_type_name, required_fields):
+            for asset in asset_list:
+                for field_name in required_fields:
+                    if not getattr(asset, field_name):
+                        validation_results.append(ValidationResult(
+                            message=f"Missing required field '{field_name}' for {asset_type_name}: {getattr(asset, 'name', asset.id)}",
+                            type="error",
+                            asset_id=asset.id,
+                            asset_type=asset_type_name,
+                            field_name=field_name
+                        ))
+
+        # Run checks for Characters
+        check_duplicate_ids(characters, "Character")
+        check_missing_required_fields(characters, "Character", ["fullName", "biography", "personality", "alignment", "honesty", "victimLikelihood", "killerLikelihood"])
+
+        # Run checks for Locations
+        check_duplicate_ids(locations, "Location")
+        check_missing_required_fields(locations, "Location", ["name", "description"])
+
+        # Run checks for Factions
+        check_duplicate_ids(factions, "Faction")
+        check_missing_required_fields(factions, "Faction", ["name", "description"])
+
+        # Run checks for Districts
+        check_duplicate_ids(districts, "District")
+        check_missing_required_fields(districts, "District", ["name", "description"])
+
+        # Update Validator UI
+        update_validator_ui()
+
+    # --- Validator UI Component ---
+    validator_output = ft.Column(
+        [],
+        scroll=ft.ScrollMode.ADAPTIVE,
+        expand=True
+    )
+
+    validator_panel = ft.Container(
+        content=ft.Column(
+            [
+                ft.Text("Validation Results", color="#FFFFFF", size=18),
+                ft.Divider(),
+                validator_output,
+            ],
+            expand=True
+        ),
+        width=300, # Fixed width for now
+        height=page.height, # Will be dynamic
+        bgcolor="#1A2B3C",
+        padding=ft.padding.all(10),
+        border=ft.border.only(left=ft.border.BorderSide(1, "#3A4D60")), # Corrected border property
+        visible=True # Initially visible for testing
+    )
+
+    def update_validator_ui():
+        validator_output.controls.clear()
+        if not validation_results:
+            validator_output.controls.append(ft.Text("No validation issues found.", color="#9E9E9E"))
+        else:
+            for result in validation_results:
+                color = "#FF5252" if result.type == "error" else "#FFC107" # Red for error, Amber for warning
+                validator_output.controls.append(ft.Text(f"{result.type.upper()}: {result.message}", color=color))
+        page.update()
+
     # Load all data on startup
     load_characters()
     load_locations()
     load_factions()
-    load_districts() # Load districts on startup
+    load_districts()
     load_lore_history()
     load_bulletin_board()
     load_timeline()
+
+    # Run initial validation
+    run_validation()
 
     # --- Character Detail View ---
     def create_character_detail_view(character: Character):
@@ -261,6 +350,7 @@ def main(page: ft.Page):
             for char in characters:
                 characters_list_view.controls.append(ft.Text(char.fullName, color="#FFFFFF", on_click=select_character))
             save_characters() # Save characters after modification
+            run_validation() # Run validation after modification
             page.update()
 
         def delete_character(e):
@@ -270,6 +360,7 @@ def main(page: ft.Page):
                 characters_list_view.controls.append(ft.Text(char.fullName, color="#FFFFFF", on_click=select_character))
             character_detail_container.content = ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")])
             save_characters() # Save characters after modification
+            run_validation() # Run validation after modification
             page.update()
 
         return ft.Column(
@@ -348,6 +439,7 @@ def main(page: ft.Page):
             for loc in locations:
                 locations_list_view.controls.append(ft.Text(loc.name, color="#FFFFFF", on_click=select_location))
             save_locations() # Save locations after modification
+            run_validation() # Run validation after modification
             page.update()
 
         def delete_location(e):
@@ -357,6 +449,7 @@ def main(page: ft.Page):
                 locations_list_view.controls.append(ft.Text(loc.name, color="#FFFFFF", on_click=select_location))
             location_detail_container.content = ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")])
             save_locations() # Save locations after modification
+            run_validation() # Run validation after modification
             page.update()
 
         return ft.Column(
@@ -418,6 +511,7 @@ def main(page: ft.Page):
             for fac in factions:
                 factions_list_view.controls.append(ft.Text(fac.name, color="#FFFFFF", on_click=select_faction))
             save_factions() # Save factions after modification
+            run_validation() # Run validation after modification
             page.update()
 
         def delete_faction(e):
@@ -427,6 +521,7 @@ def main(page: ft.Page):
                 factions_list_view.controls.append(ft.Text(fac.name, color="#FFFFFF", on_click=select_faction))
             faction_detail_container.content = ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")])
             save_factions() # Save factions after modification
+            run_validation() # Run validation after modification
             page.update()
 
         return ft.Column(
@@ -504,6 +599,7 @@ def main(page: ft.Page):
             for dist in districts:
                 districts_list_view.controls.append(ft.Text(dist.name, color="#FFFFFF", on_click=select_district))
             save_districts() # Save districts after modification
+            run_validation() # Run validation after modification
             page.update()
 
         def delete_district(e):
@@ -513,6 +609,7 @@ def main(page: ft.Page):
                 districts_list_view.controls.append(ft.Text(dist.name, color="#FFFFFF", on_click=select_district))
             district_detail_container.content = ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")])
             save_districts() # Save districts after modification
+            run_validation() # Run validation after modification
             page.update()
 
         return ft.Column(
@@ -600,6 +697,7 @@ def main(page: ft.Page):
                 characters_list_view.controls.append(ft.Text(new_character.fullName, color="#FFFFFF", on_click=select_character))
                 character_name_input.value = ""
                 save_characters() # Save characters after adding
+                run_validation() # Run validation after modification
                 page.update()
 
         return ft.Container(
@@ -693,6 +791,7 @@ def main(page: ft.Page):
                 locations_list_view.controls.append(ft.Text(new_location.name, color="#FFFFFF", on_click=select_location))
                 location_name_input.value = ""
                 save_locations() # Save locations after adding
+                run_validation() # Run validation after modification
                 page.update()
 
         return ft.Container(
@@ -782,6 +881,7 @@ def main(page: ft.Page):
                 factions_list_view.controls.append(ft.Text(new_faction.name, color="#FFFFFF", on_click=select_faction))
                 faction_name_input.value = ""
                 save_factions() # Save factions after adding
+                run_validation() # Run validation after modification
                 page.update()
 
         return ft.Container(
@@ -823,7 +923,7 @@ def main(page: ft.Page):
             padding=20
         )
 
-    def create_districts_view(): # Added create_districts_view
+    def create_districts_view():
         district_name_input = ft.TextField(
             label="District Name",
             hint_text="Enter district name",
@@ -871,6 +971,7 @@ def main(page: ft.Page):
                 districts_list_view.controls.append(ft.Text(new_district.name, color="#FFFFFF", on_click=select_district))
                 district_name_input.value = ""
                 save_districts() # Save districts after adding
+                run_validation() # Run validation after modification
                 page.update()
 
         return ft.Container(
@@ -933,6 +1034,7 @@ def main(page: ft.Page):
             nonlocal lore_history_text
             lore_history_text = lore_history_text_field.value
             save_lore_history() # Save lore history after modification
+            run_validation() # Run validation after modification
             page.update()
 
         return ft.Container(
@@ -978,6 +1080,7 @@ def main(page: ft.Page):
             nonlocal bulletin_board_text
             bulletin_board_text = bulletin_board_text_field.value
             save_bulletin_board() # Save bulletin board after modification
+            run_validation() # Run validation after modification
             page.update()
 
         return ft.Container(
@@ -1023,6 +1126,7 @@ def main(page: ft.Page):
             nonlocal timeline_text
             timeline_text = timeline_text_field.value
             save_timeline() # Save timeline after modification
+            run_validation() # Run validation after modification
             page.update()
 
         return ft.Container(
@@ -1051,10 +1155,13 @@ def main(page: ft.Page):
     load_characters()
     load_locations()
     load_factions()
-    load_districts() # Load districts on startup
+    load_districts()
     load_lore_history()
     load_bulletin_board()
     load_timeline()
+
+    # Run initial validation
+    run_validation()
 
     # --- Main Content Area ---
     main_content_area = ft.Column([create_characters_view()], expand=True)
@@ -1106,16 +1213,6 @@ def main(page: ft.Page):
             update_main_content(create_bulletin_board_view()) # Default to Bulletin Board view
         page.update()
 
-    page.navigation_bar = ft.NavigationBar(
-        bgcolor="#2C3E50",  # Slightly lighter navy for nav bar
-        selected_index=0,
-        destinations=[
-            ft.NavigationBarDestination(icon=ft.Icons.PUBLIC, label="World Builder"),
-            ft.NavigationBarDestination(icon=ft.Icons.CASES, label="Case Builder"),
-        ],
-        on_change=on_navigation_change,
-    )
-
     page.appbar = ft.AppBar(
         title=ft.Text("The Agency", color="#FFFFFF"),
         center_title=False,
@@ -1141,6 +1238,7 @@ def main(page: ft.Page):
             [
                 secondary_nav_container,
                 main_content_area,
+                validator_panel # Add validator panel to the right
             ],
             expand=True,
         )
