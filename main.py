@@ -24,7 +24,7 @@ def main(page: ft.Page):
     districts: list[District] = []
     case_meta: CaseMeta = CaseMeta(victim="", culprit="", crimeScene="", murderWeapon="", coreMysterySolutionDetails="") # Initialize CaseMeta
     lore_history_text = ""
-    bulletin_board_text = ""
+    bulletin_board_nodes = [] # Changed to store node data
     timeline_text = ""
     validation_results: list[ValidationResult] = []
 
@@ -36,7 +36,7 @@ def main(page: ft.Page):
     DISTRICTS_FILE = os.path.join(DATA_DIR, "districts.json")
     CASE_META_FILE = os.path.join(DATA_DIR, "case_meta.json") # Added case meta file path
     LORE_HISTORY_FILE = os.path.join(DATA_DIR, "lore_history.txt")
-    BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.txt")
+    BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.json") # Changed to JSON
     TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.txt")
 
     # Ensure data directory exists
@@ -204,15 +204,15 @@ def main(page: ft.Page):
             with open(LORE_HISTORY_FILE, "r") as f:
                 lore_history_text = f.read()
 
-    def save_bulletin_board():
+    def save_bulletin_board_nodes():
         with open(BULLETIN_BOARD_FILE, "w") as f:
-            f.write(bulletin_board_text)
+            json.dump(bulletin_board_nodes, f, indent=4)
 
-    def load_bulletin_board():
-        nonlocal bulletin_board_text
+    def load_bulletin_board_nodes():
+        nonlocal bulletin_board_nodes
         if os.path.exists(BULLETIN_BOARD_FILE):
             with open(BULLETIN_BOARD_FILE, "r") as f:
-                bulletin_board_text = f.read()
+                bulletin_board_nodes = json.load(f)
 
     def save_timeline():
         with open(TIMELINE_FILE, "w") as f:
@@ -1265,41 +1265,69 @@ def main(page: ft.Page):
         )
 
     def create_bulletin_board_view():
-        bulletin_board_text_field = ft.TextField(
-            label="Interactive Bulletin Board",
-            hint_text="Describe the plot graph and node editor here.",
-            multiline=True,
-            min_lines=10,
-            max_lines=20,
-            value=bulletin_board_text,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6",
-            filled=True,
-            fill_color="#3A4D60",
-            expand=True
-        )
+        # Node data structure: {"id": "node1", "type": "character", "x": 100, "y": 100, "text": "Node 1 Text"}
+        # This will be populated from bulletin_board_nodes list
+        node_controls = []
 
-        def save_bulletin_board(e):
-            nonlocal bulletin_board_text
-            bulletin_board_text = bulletin_board_text_field.value
-            save_bulletin_board() # Save bulletin board after modification
-            run_validation() # Run validation after modification
+        def on_pan_update(e: ft.DragUpdateEvent, node_data):
+            node_data["x"] += e.delta_x
+            node_data["y"] += e.delta_y
+            e.control.top = node_data["y"]
+            e.control.left = node_data["x"]
+            e.control.update()
+
+        def create_draggable_node(node_data):
+            return ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Text(node_data["text"], color="#FFFFFF"),
+                        # Add more node content here based on node_data["type"]
+                    ]
+                ),
+                width=150,
+                height=100,
+                bgcolor="#3A4D60",
+                border_radius=5,
+                padding=10,
+                top=node_data["y"],
+                left=node_data["x"],
+                data=node_data, # Store node data in the control
+                on_pan_update=lambda e: on_pan_update(e, node_data)
+            )
+
+        def add_node(e):
+            new_node_data = {"id": str(uuid.uuid4()), "type": "generic", "x": 50, "y": 50, "text": "New Node"}
+            bulletin_board_nodes.append(new_node_data)
+            node_controls.append(create_draggable_node(new_node_data))
+            save_bulletin_board_nodes()
             page.update()
+
+        # Populate nodes from loaded data
+        for node_data in bulletin_board_nodes:
+            node_controls.append(create_draggable_node(node_data))
 
         return ft.Container(
             content=ft.Column(
                 [
                     ft.Text("Interactive Bulletin Board", color="#FFFFFF", size=20),
-                    ft.Text("The plot graph and node editor will go here.", color="#9E9E9E"),
-                    bulletin_board_text_field,
+                    ft.Text("Drag and drop nodes to organize your plot.", color="#9E9E9E"),
                     ft.ElevatedButton(
-                        text="Save Bulletin Board",
-                        icon=ft.Icons.SAVE,
+                        text="Add Node",
+                        icon=ft.Icons.ADD,
                         bgcolor="#64B5F6",
                         color="#FFFFFF",
-                        on_click=save_bulletin_board
+                        on_click=add_node
+                    ),
+                    ft.Container(
+                        content=ft.Stack(
+                            node_controls,
+                            expand=True
+                        ),
+                        expand=True,
+                        border=ft.border.all(1, "#3A4D60"),
+                        border_radius=5,
+                        clip_behavior=ft.ClipBehavior.HARD_EDGE, # Clip content outside bounds
+                        scroll=ft.ScrollMode.AUTO # Enable scrolling
                     )
                 ],
                 expand=True,
@@ -1363,7 +1391,7 @@ def main(page: ft.Page):
     load_districts()
     load_case_meta()
     load_lore_history()
-    load_bulletin_board()
+    load_bulletin_board_nodes()
     load_timeline()
 
     # Run initial validation
