@@ -246,7 +246,14 @@ def main(page: ft.Page):
         # Helper to check for missing required fields
         def check_missing_required_fields(asset_list, asset_type_name, required_fields):
             for asset in asset_list:
-                asset_identifier = getattr(asset, 'name', getattr(asset, 'fullName', asset.id if hasattr(asset, 'id') else "Case Metadata"))
+                asset_identifier = "Case Metadata" # Default for CaseMeta
+                if hasattr(asset, 'fullName'):
+                    asset_identifier = asset.fullName
+                elif hasattr(asset, 'name'):
+                    asset_identifier = asset.name
+                elif hasattr(asset, 'id'):
+                    asset_identifier = asset.id
+
                 for field_name in required_fields:
                     if not getattr(asset, field_name):
                         validation_results.append(ValidationResult(
