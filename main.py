@@ -137,7 +137,7 @@ def main(page: ft.Page):
                         resources=item.get('resources', []), # Default to empty list
                         image=item.get('image'),
                         allyFactions=item.get('allyFactions', []), # Default to empty list
-                        enemyFactions=item.get('enemyFactions', []), # Default to empty list
+                        enemyFactions=item.get('enemies', []), # Default to empty list
                         members=item.get('members', []), # Default to empty list
                         influence=item.get('influence'),
                         publicPerception=item.get('publicPerception')
@@ -416,7 +416,7 @@ def main(page: ft.Page):
         )
 
     # --- Character Detail View ---
-    def create_character_detail_view(character: Character):
+    def create_character_detail_view(character: Character, characters_list_view, character_detail_container, select_character):
         # Create TextField controls for each editable field
         full_name_field = ft.TextField(label="Full Name", value=character.fullName, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         biography_field = ft.TextField(label="Biography", value=character.biography, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -457,6 +457,27 @@ def main(page: ft.Page):
             filled=True,
             fill_color="#3A4D60",
         )
+        alias_field = ft.TextField(label="Alias", value=character.alias, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        age_field = ft.TextField(label="Age", value=str(character.age) if character.age else "", keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        employment_field = ft.TextField(label="Employment", value=character.employment, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_field = ft.TextField(label="Image URL", value=character.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        faction_field = ft.TextField(label="Faction", value=character.faction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        district_field = ft.TextField(label="District", value=character.district, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        motivations_field = ft.TextField(label="Motivations (comma-separated)", value=", ".join(character.motivations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        secrets_field = ft.TextField(label="Secrets (comma-separated)", value=", ".join(character.secrets), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        allies_field = ft.TextField(label="Allies (comma-separated IDs)", value=", ".join(character.allies), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        enemies_field = ft.TextField(label="Enemies (comma-separated IDs)", value=", ".join(character.enemies), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        items_field = ft.TextField(label="Items (comma-separated IDs)", value=", ".join(character.items), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        archetype_field = ft.TextField(label="Archetype", value=character.archetype, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        values_field = ft.TextField(label="Values (comma-separated)", value=", ".join(character.values), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        flaws_field = ft.TextField(label="Flaws/Limitations (comma-separated)", value=", ".join(character.flawsHandicapsLimitations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        quirks_field = ft.TextField(label="Quirks (comma-separated)", value=", ".join(character.quirks), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        characteristics_field = ft.TextField(label="Characteristics (comma-separated)", value=", ".join(character.characteristics), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        vulnerabilities_field = ft.TextField(label="Vulnerabilities (comma-separated)", value=", ".join(character.vulnerabilities), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        voice_model_field = ft.TextField(label="Voice Model", value=character.voiceModel, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        dialogue_style_field = ft.TextField(label="Dialogue Style", value=character.dialogueStyle, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        expertise_field = ft.TextField(label="Expertise (comma-separated)", value=", ".join(character.expertise), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        portrayal_notes_field = ft.TextField(label="Portrayal Notes", value=character.portrayalNotes, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
 
         def save_character_details(e):
             character.fullName = full_name_field.value
@@ -468,11 +489,32 @@ def main(page: ft.Page):
             character.killerLikelihood = int(killer_likelihood_field.value)
             character.gender = gender_field.value if gender_field.value else None
             character.wealthClass = wealth_class_field.value if wealth_class_field.value else None
+            character.alias = alias_field.value
+            character.age = int(age_field.value) if age_field.value else None
+            character.employment = employment_field.value
+            character.image = image_field.value
+            character.faction = faction_field.value
+            character.district = district_field.value
+            character.motivations = [m.strip() for m in motivations_field.value.split(',') if m.strip()]
+            character.secrets = [s.strip() for s in secrets_field.value.split(',') if s.strip()]
+            character.allies = [a.strip() for a in allies_field.value.split(',') if a.strip()]
+            character.enemies = [en.strip() for en in enemies_field.value.split(',') if en.strip()]
+            character.items = [it.strip() for it in items_field.value.split(',') if it.strip()]
+            character.archetype = archetype_field.value
+            character.values = [v.strip() for v in values_field.value.split(',') if v.strip()]
+            character.flawsHandicapsLimitations = [f.strip() for f in flaws_field.value.split(',') if f.strip()]
+            character.quirks = [q.strip() for q in quirks_field.value.split(',') if q.strip()]
+            character.characteristics = [c.strip() for c in characteristics_field.value.split(',') if c.strip()]
+            character.vulnerabilities = [v.strip() for v in vulnerabilities_field.value.split(',') if v.strip()]
+            character.voiceModel = voice_model_field.value
+            character.dialogueStyle = dialogue_style_field.value
+            character.expertise = [e.strip() for e in expertise_field.value.split(',') if e.strip()]
+            character.portrayalNotes = portrayal_notes_field.value
 
             # Update the character list view to reflect name changes
             characters_list_view.controls.clear()
-            for char in characters:
-                characters_list_view.controls.append(ft.Text(char.fullName, color="#FFFFFF", on_click=select_character))
+            for char_item in characters:
+                characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(char_item.fullName, color="#FFFFFF"), on_tap=lambda e, char=char_item: select_character(char))) # Use GestureDetector
             save_characters() # Save characters after modification
             run_validation() # Run validation after modification
             page.update()
@@ -480,8 +522,8 @@ def main(page: ft.Page):
         def delete_character(e):
             characters.remove(character)
             characters_list_view.controls.clear()
-            for char in characters:
-                characters_list_view.controls.append(ft.Text(char.fullName, color="#FFFFFF", on_click=select_character))
+            for char_item in characters:
+                characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(char_item.fullName, color="#FFFFFF"), on_tap=lambda e, char=char_item: select_character(char))) # Use GestureDetector
             character_detail_container.content = ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")])
             save_characters() # Save characters after modification
             run_validation() # Run validation after modification
@@ -491,14 +533,35 @@ def main(page: ft.Page):
             [
                 ft.Text(f"Character Details: {character.fullName}", color="#FFFFFF", size=20),
                 full_name_field,
+                alias_field,
+                age_field,
+                gender_field,
+                employment_field,
+                image_field,
+                faction_field,
+                wealth_class_field,
+                district_field,
                 biography_field,
                 personality_field,
                 alignment_field,
                 honesty_field,
                 victim_likelihood_field,
                 killer_likelihood_field,
-                gender_field,
-                wealth_class_field,
+                motivations_field,
+                secrets_field,
+                allies_field,
+                enemies_field,
+                items_field,
+                archetype_field,
+                values_field,
+                flaws_field,
+                quirks_field,
+                characteristics_field,
+                vulnerabilities_field,
+                voice_model_field,
+                dialogue_style_field,
+                expertise_field,
+                portrayal_notes_field,
                 ft.Row(
                     [
                         ft.ElevatedButton(
@@ -523,7 +586,7 @@ def main(page: ft.Page):
         )
 
     # --- Location Detail View ---
-    def create_location_detail_view(location: Location):
+    def create_location_detail_view(location: Location, locations_list_view, location_detail_container, select_location):
         # Create TextField controls for each editable field
         name_field = ft.TextField(label="Name", value=location.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         description_field = ft.TextField(label="Description", value=location.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -545,6 +608,10 @@ def main(page: ft.Page):
         )
         hidden_field = ft.Checkbox(label="Hidden", value=location.hidden, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
         internal_logic_notes_field = ft.TextField(label="Internal Logic Notes", value=location.internalLogicNotes, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_field = ft.TextField(label="Image URL", value=location.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        key_characters_field = ft.TextField(label="Key Characters (comma-separated IDs)", value=", ".join(location.keyCharacters), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        associated_items_field = ft.TextField(label="Associated Items (comma-separated IDs)", value=", ".join(location.associatedItems), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        clues_field = ft.TextField(label="Clues (comma-separated IDs)", value=", ".join(location.clues), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
 
         def save_location_details(e):
             location.name = name_field.value
@@ -557,11 +624,15 @@ def main(page: ft.Page):
             location.accessibility = accessibility_field.value
             location.hidden = hidden_field.value
             location.internalLogicNotes = internal_logic_notes_field.value
+            location.image = image_field.value
+            location.keyCharacters = [kc.strip() for kc in key_characters_field.value.split(',') if kc.strip()]
+            location.associatedItems = [ai.strip() for ai in associated_items_field.value.split(',') if ai.strip()]
+            location.clues = [c.strip() for c in clues_field.value.split(',') if c.strip()]
 
             # Update the location list view to reflect name changes
             locations_list_view.controls.clear()
-            for loc in locations:
-                locations_list_view.controls.append(ft.Text(loc.name, color="#FFFFFF", on_click=select_location))
+            for loc_item in locations:
+                locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(loc_item.name, color="#FFFFFF"), on_tap=lambda e, loc=loc_item: select_location(loc))) # Use GestureDetector
             save_locations() # Save locations after modification
             run_validation() # Run validation after modification
             page.update()
@@ -569,8 +640,8 @@ def main(page: ft.Page):
         def delete_location(e):
             locations.remove(location)
             locations_list_view.controls.clear()
-            for loc in locations:
-                locations_list_view.controls.append(ft.Text(loc.name, color="#FFFFFF", on_click=select_location))
+            for loc_item in locations:
+                locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(loc_item.name, color="#FFFFFF"), on_tap=lambda e, loc=loc_item: select_location(loc))) # Use GestureDetector
             location_detail_container.content = ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")])
             save_locations() # Save locations after modification
             run_validation() # Run validation after modification
@@ -586,9 +657,13 @@ def main(page: ft.Page):
                 owning_faction_field,
                 danger_level_field,
                 population_field,
+                image_field,
+                key_characters_field,
+                associated_items_field,
                 accessibility_field,
                 hidden_field,
                 internal_logic_notes_field,
+                clues_field,
                 ft.Row(
                     [
                         ft.ElevatedButton(
@@ -613,7 +688,7 @@ def main(page: ft.Page):
         )
 
     # --- Faction Detail View ---
-    def create_faction_detail_view(faction: Faction):
+    def create_faction_detail_view(faction: Faction, factions_list_view, faction_detail_container, select_faction):
         # Create TextField controls for each editable field
         name_field = ft.TextField(label="Name", value=faction.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         description_field = ft.TextField(label="Description", value=faction.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -621,6 +696,22 @@ def main(page: ft.Page):
         ideology_field = ft.TextField(label="Ideology", value=faction.ideology, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         headquarters_field = ft.TextField(label="Headquarters", value=faction.headquarters, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         public_perception_field = ft.TextField(label="Public Perception", value=faction.publicPerception, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_field = ft.TextField(label="Image URL", value=faction.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        resources_field = ft.TextField(label="Resources (comma-separated)", value=", ".join(faction.resources), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        ally_factions_field = ft.TextField(label="Ally Factions (comma-separated IDs)", value=", ".join(faction.allyFactions), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        enemy_factions_field = ft.TextField(label="Enemy Factions (comma-separated IDs)", value=", ".join(faction.enemyFactions), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        members_field = ft.TextField(label="Members (comma-separated IDs)", value=", ".join(faction.members), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        influence_field = ft.Dropdown(
+            label="Influence",
+            value=faction.influence,
+            options=[ft.dropdown.Option("Local"), ft.dropdown.Option("District-wide"), ft.dropdown.Option("City-wide"), ft.dropdown.Option("Regional"), ft.dropdown.Option("Global")],
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+        )
 
         def save_faction_details(e):
             faction.name = name_field.value
@@ -629,11 +720,17 @@ def main(page: ft.Page):
             faction.ideology = ideology_field.value
             faction.headquarters = headquarters_field.value
             faction.publicPerception = public_perception_field.value
+            faction.image = image_field.value
+            faction.resources = [r.strip() for r in resources_field.value.split(',') if r.strip()]
+            faction.allyFactions = [af.strip() for af in ally_factions_field.value.split(',') if af.strip()]
+            faction.enemyFactions = [ef.strip() for ef in enemy_factions_field.value.split(',') if ef.strip()]
+            faction.members = [m.strip() for m in members_field.value.split(',') if m.strip()]
+            faction.influence = influence_field.value
 
             # Update the faction list view to reflect name changes
             factions_list_view.controls.clear()
-            for fac in factions:
-                factions_list_view.controls.append(ft.Text(fac.name, color="#FFFFFF", on_click=select_faction))
+            for fac_item in factions:
+                factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(fac_item.name, color="#FFFFFF"), on_tap=lambda e, fac=fac_item: select_faction(fac))) # Use GestureDetector
             save_factions() # Save factions after modification
             run_validation() # Run validation after modification
             page.update()
@@ -641,8 +738,8 @@ def main(page: ft.Page):
         def delete_faction(e):
             factions.remove(faction)
             factions_list_view.controls.clear()
-            for fac in factions:
-                factions_list_view.controls.append(ft.Text(fac.name, color="#FFFFFF", on_click=select_faction))
+            for fac_item in factions:
+                factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(fac_item.name, color="#FFFFFF"), on_tap=lambda e, fac=fac_item: select_faction(fac))) # Use GestureDetector
             faction_detail_container.content = ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")])
             save_factions() # Save factions after modification
             run_validation() # Run validation after modification
@@ -656,6 +753,12 @@ def main(page: ft.Page):
                 archetype_field,
                 ideology_field,
                 headquarters_field,
+                image_field,
+                resources_field,
+                ally_factions_field,
+                enemy_factions_field,
+                members_field,
+                influence_field,
                 public_perception_field,
                 ft.Row(
                     [
@@ -681,7 +784,7 @@ def main(page: ft.Page):
         )
 
     # --- District Detail View ---
-    def create_district_detail_view(district: District):
+    def create_district_detail_view(district: District, districts_list_view, district_detail_container, select_district):
         # Create TextField controls for each editable field
         name_field = ft.TextField(label="Name", value=district.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         description_field = ft.TextField(label="Description", value=district.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -709,6 +812,9 @@ def main(page: ft.Page):
             fill_color="#3A4D60",
         )
         dominant_faction_field = ft.TextField(label="Dominant Faction", value=district.dominantFaction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_field = ft.TextField(label="Image URL", value=district.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        notable_features_field = ft.TextField(label="Notable Features (comma-separated)", value=", ".join(district.notableFeatures), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        key_locations_field = ft.TextField(label="Key Locations (comma-separated IDs)", value=", ".join(district.keyLocations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
 
         def save_district_details(e):
             district.name = name_field.value
@@ -717,11 +823,14 @@ def main(page: ft.Page):
             district.atmosphere = atmosphere_field.value
             district.populationDensity = population_density_field.value if population_density_field.value else None
             district.dominantFaction = dominant_faction_field.value
+            district.image = image_field.value
+            district.notableFeatures = [nf.strip() for nf in notable_features_field.value.split(',') if nf.strip()]
+            district.keyLocations = [kl.strip() for kl in key_locations_field.value.split(',') if kl.strip()]
 
             # Update the district list view to reflect name changes
             districts_list_view.controls.clear()
-            for dist in districts:
-                districts_list_view.controls.append(ft.Text(dist.name, color="#FFFFFF", on_click=select_district))
+            for dist_item in districts:
+                districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(dist_item.name, color="#FFFFFF"), on_tap=lambda e, dist=dist_item: select_district(dist))) # Use GestureDetector
             save_districts() # Save districts after modification
             run_validation() # Run validation after modification
             page.update()
@@ -729,8 +838,8 @@ def main(page: ft.Page):
         def delete_district(e):
             districts.remove(district)
             districts_list_view.controls.clear()
-            for dist in districts:
-                districts_list_view.controls.append(ft.Text(dist.name, color="#FFFFFF", on_click=select_district))
+            for dist_item in districts:
+                districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(dist_item.name, color="#FFFFFF"), on_tap=lambda e, dist=dist_item: select_district(dist))) # Use GestureDetector
             district_detail_container.content = ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")])
             save_districts() # Save districts after modification
             run_validation() # Run validation after modification
@@ -745,6 +854,9 @@ def main(page: ft.Page):
                 atmosphere_field,
                 population_density_field,
                 dominant_faction_field,
+                image_field,
+                notable_features_field,
+                key_locations_field,
                 ft.Row(
                     [
                         ft.ElevatedButton(
@@ -769,6 +881,35 @@ def main(page: ft.Page):
         )
 
     # --- Content Views ---
+    # Declare these outside to make them accessible to save/delete functions
+    characters_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    character_detail_container = ft.Container(content=ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    locations_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    location_detail_container = ft.Container(content=ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    factions_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    faction_detail_container = ft.Container(content=ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    districts_list_view = ft.ListView(expand=True, spacing=10, padding=20)
+    district_detail_container = ft.Container(content=ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")]), expand=True, padding=20)
+
+    def select_character(char):
+        character_detail_container.content = create_character_detail_view(char, characters_list_view, character_detail_container, select_character)
+        page.update()
+
+    def select_location(loc):
+        location_detail_container.content = create_location_detail_view(loc, locations_list_view, location_detail_container, select_location)
+        page.update()
+
+    def select_faction(fac):
+        faction_detail_container.content = create_faction_detail_view(fac, factions_list_view, faction_detail_container, select_faction)
+        page.update()
+
+    def select_district(dist):
+        district_detail_container.content = create_district_detail_view(dist, districts_list_view, district_detail_container, select_district)
+        page.update()
+
     def create_characters_view():
         character_name_input = ft.TextField(
             label="Character Name",
@@ -782,25 +923,10 @@ def main(page: ft.Page):
             fill_color="#3A4D60",
         )
 
-        characters_list_view = ft.ListView(
-            expand=True,
-            spacing=10,
-            padding=20,
-            controls=[ft.Text(char.fullName, color="#FFFFFF", on_click=select_character) for char in characters] # Populate on load
-        )
-
-        character_detail_container = ft.Container(
-            content=ft.Column([ft.Text("Select a character to view details", color="#9E9E9E")]), # Placeholder
-            expand=True,
-            padding=20
-        )
-
-        def select_character(e):
-            selected_char_name = e.control.text
-            selected_character = next((char for char in characters if char.fullName == selected_char_name), None)
-            if selected_character:
-                character_detail_container.content = create_character_detail_view(selected_character)
-                page.update()
+        # Populate on load
+        characters_list_view.controls.clear()
+        for char in characters:
+            characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(char.fullName, color="#FFFFFF"), on_tap=lambda e, char=char: select_character(char)))
 
         def add_character(e):
             if character_name_input.value:
@@ -818,7 +944,7 @@ def main(page: ft.Page):
                     wealthClass=WealthClass.__args__[0] # Use first value from Literal as default
                 )
                 characters.append(new_character)
-                characters_list_view.controls.append(ft.Text(new_character.fullName, color="#FFFFFF", on_click=select_character))
+                characters_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_character.fullName, color="#FFFFFF"), on_tap=lambda e, char=new_character: select_character(char))) # Use GestureDetector
                 character_name_input.value = ""
                 save_characters() # Save characters after adding
                 run_validation() # Run validation after modification
@@ -876,25 +1002,10 @@ def main(page: ft.Page):
             fill_color="#3A4D60",
         )
 
-        locations_list_view = ft.ListView(
-            expand=True,
-            spacing=10,
-            padding=20,
-            controls=[ft.Text(loc.name, color="#FFFFFF", on_click=select_location) for loc in locations] # Populate on load
-        )
-
-        location_detail_container = ft.Container(
-            content=ft.Column([ft.Text("Select a location to view details", color="#9E9E9E")]), # Placeholder
-            expand=True,
-            padding=20
-        )
-
-        def select_location(e):
-            selected_loc_name = e.control.text
-            selected_location = next((loc for loc in locations if loc.name == selected_loc_name), None)
-            if selected_location:
-                location_detail_container.content = create_location_detail_view(selected_location)
-                page.update()
+        # Populate on load
+        locations_list_view.controls.clear()
+        for loc in locations:
+            locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(loc.name, color="#FFFFFF"), on_tap=lambda e, loc=loc: select_location(loc)))
 
         def add_location(e):
             if location_name_input.value:
@@ -912,7 +1023,7 @@ def main(page: ft.Page):
                     internalLogicNotes="", # Placeholder
                 )
                 locations.append(new_location)
-                locations_list_view.controls.append(ft.Text(new_location.name, color="#FFFFFF", on_click=select_location))
+                locations_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_location.name, color="#FFFFFF"), on_tap=lambda e, loc=new_location: select_location(loc))) # Use GestureDetector
                 location_name_input.value = ""
                 save_locations() # Save locations after adding
                 run_validation() # Run validation after modification
@@ -970,25 +1081,10 @@ def main(page: ft.Page):
             fill_color="#3A4D60",
         )
 
-        factions_list_view = ft.ListView(
-            expand=True,
-            spacing=10,
-            padding=20,
-            controls=[ft.Text(fac.name, color="#FFFFFF", on_click=select_faction) for fac in factions] # Populate on load
-        )
-
-        faction_detail_container = ft.Container(
-            content=ft.Column([ft.Text("Select a faction to view details", color="#9E9E9E")]), # Placeholder
-            expand=True,
-            padding=20
-        )
-
-        def select_faction(e):
-            selected_fac_name = e.control.text
-            selected_faction = next((fac for fac in factions if fac.name == selected_fac_name), None)
-            if selected_faction:
-                faction_detail_container.content = create_faction_detail_view(selected_faction)
-                page.update()
+        # Populate on load
+        factions_list_view.controls.clear()
+        for fac in factions:
+            factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(fac.name, color="#FFFFFF"), on_tap=lambda e, fac=fac: select_faction(fac)))
 
         def add_faction(e):
             if faction_name_input.value:
@@ -1002,7 +1098,7 @@ def main(page: ft.Page):
                     publicPerception="", # Placeholder
                 )
                 factions.append(new_faction)
-                factions_list_view.controls.append(ft.Text(new_faction.name, color="#FFFFFF", on_click=select_faction))
+                factions_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_faction.name, color="#FFFFFF"), on_tap=lambda e, fac=new_faction: select_faction(fac))) # Use GestureDetector
                 faction_name_input.value = ""
                 save_factions() # Save factions after adding
                 run_validation() # Run validation after modification
@@ -1060,25 +1156,10 @@ def main(page: ft.Page):
             fill_color="#3A4D60",
         )
 
-        districts_list_view = ft.ListView(
-            expand=True,
-            spacing=10,
-            padding=20,
-            controls=[ft.Text(dist.name, color="#FFFFFF", on_click=select_district) for dist in districts] # Populate on load
-        )
-
-        district_detail_container = ft.Container(
-            content=ft.Column([ft.Text("Select a district to view details", color="#9E9E9E")]), # Placeholder
-            expand=True,
-            padding=20
-        )
-
-        def select_district(e):
-            selected_dist_name = e.control.text
-            selected_district = next((dist for dist in districts if dist.name == selected_dist_name), None)
-            if selected_district:
-                district_detail_container.content = create_district_detail_view(selected_district)
-                page.update()
+        # Populate on load
+        districts_list_view.controls.clear()
+        for dist in districts:
+            districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(dist.name, color="#FFFFFF"), on_tap=lambda e, dist=dist: select_district(dist)))
 
         def add_district(e):
             if district_name_input.value:
@@ -1092,7 +1173,7 @@ def main(page: ft.Page):
                     dominantFaction="", # Placeholder
                 )
                 districts.append(new_district)
-                districts_list_view.controls.append(ft.Text(new_district.name, color="#FFFFFF", on_click=select_district))
+                districts_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_district.name, color="#FFFFFF"), on_tap=lambda e, dist=new_district: select_district(dist))) # Use GestureDetector
                 district_name_input.value = ""
                 save_districts() # Save districts after adding
                 run_validation() # Run validation after modification
