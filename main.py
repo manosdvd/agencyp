@@ -5,6 +5,7 @@ import json # For JSON serialization
 import os # For path operations
 import zipfile # For zipping/unzipping case files
 import shutil # For high-level file operations like copying directories
+from PIL import Image # Import Pillow for image processing
 
 def main(page: ft.Page):
     page.title = "The Agency"
@@ -38,8 +39,6 @@ def main(page: ft.Page):
             BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.json")
             TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.json")
             load_all_data()
-            page.snack_bar = ft.SnackBar(ft.Text(f"Case opened successfully from {DATA_DIR}"), open=True)
-        page.update()
 
     pick_open_file_dialog = ft.FilePicker(on_result=pick_open_file_result)
     page.overlay.append(pick_open_file_dialog)
@@ -73,6 +72,7 @@ def main(page: ft.Page):
     # Noir Theme
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#1A2B3C"  # Dark navy blue
+
     # --- Data Storage (in-memory for now) ---
     characters: list[Character] = []
     characters_by_id: dict[str, Character] = {} # New in-memory index
@@ -95,6 +95,7 @@ def main(page: ft.Page):
 
     # --- File Paths ---
     DATA_DIR = "./data"
+    IMAGES_DIR = os.path.join(DATA_DIR, "images")
     CHARACTERS_FILE = os.path.join(DATA_DIR, "characters.json")
     LOCATIONS_FILE = os.path.join(DATA_DIR, "locations.json")
     FACTIONS_FILE = os.path.join(DATA_DIR, "factions.json")
@@ -106,8 +107,11 @@ def main(page: ft.Page):
     BULLETIN_BOARD_FILE = os.path.join(DATA_DIR, "bulletin_board.json") # Changed to JSON
     TIMELINE_FILE = os.path.join(DATA_DIR, "timeline.json") # Changed to JSON
 
-    # Ensure data directory exists
+    # Ensure data directories exist
     os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+
+    
 
     # --- Save/Load Functions ---
     def save_all_data():
@@ -160,6 +164,39 @@ def main(page: ft.Page):
         except Exception as e:
             page.snack_bar = ft.SnackBar(ft.Text(f"Error importing case: {e}"), open=True)
         page.update()
+
+    def process_and_save_image(file_path: str, asset_id: str) -> str | None:
+        try:
+            with Image.open(file_path) as img:
+                # Resize and crop to a square thumbnail (e.g., 200x200)
+                size = (200, 200)
+                img.thumbnail(size, Image.Resampling.LANCZOS) # Use LANCZOS for high-quality downsampling
+
+                # Calculate coordinates for cropping to a square from the center
+                width, height = img.size
+                if width > height:
+                    left = (width - height) / 2
+                    top = 0
+                    right = (width + height) / 2
+                    bottom = height
+                else:
+                    left = 0
+                    top = (height - width) / 2
+                    right = width
+                    bottom = (height + width) / 2
+                
+                img = img.crop((left, top, right, bottom))
+
+                # Create a unique filename for the image
+                file_extension = os.path.splitext(file_path)[1]
+                image_filename = f"{asset_id}{file_extension}"
+                save_path = os.path.join(IMAGES_DIR, image_filename)
+                img.save(save_path)
+                return save_path
+        except Exception as e:
+            page.snack_bar = ft.SnackBar(ft.Text(f"Error processing image: {e}"), open=True)
+            page.update()
+            return None
 
     def new_case():
         nonlocal characters, locations, factions, districts, items, clues, case_meta, lore_history_text, bulletin_board_nodes, timeline_events
@@ -881,7 +918,40 @@ def main(page: ft.Page):
         alias_field = ft.TextField(label="Alias", value=character.alias, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         age_field = ft.TextField(label="Age", value=str(character.age) if character.age else "", keyboard_type=ft.KeyboardType.NUMBER, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         employment_field = ft.TextField(label="Employment", value=character.employment, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=character.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_display = ft.Image(src=character.image if character.image else None, width=100, height=100, fit=ft.ImageFit.CONTAIN)
+
+        def pick_image_result(e: ft.FilePickerResultEvent):
+            if e.files:
+                selected_file_path = e.files[0].path
+                processed_image_filename = process_and_save_image(selected_file_path, character.id)
+                if processed_image_filename:
+                    character.image = processed_image_filename
+                    image_display.src = character.image
+                    image_display.visible = True
+                    page.update()
+
+        pick_image_dialog = ft.FilePicker(on_result=pick_image_result)
+        page.overlay.append(pick_image_dialog)
+
+        image_field = ft.TextField(
+            label="Image URL",
+            value=character.image,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            read_only=True # Make it read-only as it's set by the picker
+        )
+
+        upload_image_button = ft.ElevatedButton(
+            text="Upload Image",
+            icon=ft.Icons.UPLOAD_FILE,
+            on_click=lambda e: pick_image_dialog.pick_files(allow_multiple=False),
+            bgcolor="#64B5F6",
+            color="#FFFFFF"
+        )
         faction_field = ft.TextField(label="Faction", value=character.faction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         district_field = ft.TextField(label="District", value=character.district, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         motivations_field = ft.TextField(label="Motivations (comma-separated)", value=", ".join(character.motivations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -954,6 +1024,8 @@ def main(page: ft.Page):
         return ft.Column(
             [
                 ft.Text(f"Character Details: {character.fullName}", color="#FFFFFF", size=20),
+                image_display,
+                upload_image_button,
                 full_name_field,
                 alias_field,
                 age_field,
@@ -1030,7 +1102,40 @@ def main(page: ft.Page):
         )
         hidden_field = ft.Checkbox(label="Hidden", value=location.hidden, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
         internal_logic_notes_field = ft.TextField(label="Internal Logic Notes", value=location.internalLogicNotes, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=location.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_display = ft.Image(src=location.image if location.image else None, width=100, height=100, fit=ft.ImageFit.CONTAIN)
+
+        def pick_image_result(e: ft.FilePickerResultEvent):
+            if e.files:
+                selected_file_path = e.files[0].path
+                processed_image_filename = process_and_save_image(selected_file_path, location.id)
+                if processed_image_filename:
+                    location.image = processed_image_filename
+                    image_display.src = location.image
+                    image_display.visible = True
+                    page.update()
+
+        pick_image_dialog = ft.FilePicker(on_result=pick_image_result)
+        page.overlay.append(pick_image_dialog)
+
+        image_field = ft.TextField(
+            label="Image URL",
+            value=location.image,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            read_only=True # Make it read-only as it's set by the picker
+        )
+
+        upload_image_button = ft.ElevatedButton(
+            text="Upload Image",
+            icon=ft.Icons.UPLOAD_FILE,
+            on_click=lambda e: pick_image_dialog.pick_files(allow_multiple=False),
+            bgcolor="#64B5F6",
+            color="#FFFFFF"
+        )
         key_characters_field = ft.TextField(label="Key Characters (comma-separated IDs)", value=", ".join(location.keyCharacters), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         associated_items_field = ft.TextField(label="Associated Items (comma-separated IDs)", value=", ".join(location.associatedItems), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         clues_field = ft.TextField(label="Clues (comma-separated IDs)", value=", ".join(location.clues), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -1073,6 +1178,8 @@ def main(page: ft.Page):
         return ft.Column(
             [
                 ft.Text(f"Location Details: {location.name}", color="#FFFFFF", size=20),
+                image_display,
+                upload_image_button,
                 name_field,
                 description_field,
                 type_field,
@@ -1119,7 +1226,40 @@ def main(page: ft.Page):
         ideology_field = ft.TextField(label="Ideology", value=faction.ideology, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         headquarters_field = ft.TextField(label="Headquarters", value=faction.headquarters, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         public_perception_field = ft.TextField(label="Public Perception", value=faction.publicPerception, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=faction.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_display = ft.Image(src=faction.image if faction.image else None, width=100, height=100, fit=ft.ImageFit.CONTAIN)
+
+        def pick_image_result(e: ft.FilePickerResultEvent):
+            if e.files:
+                selected_file_path = e.files[0].path
+                processed_image_filename = process_and_save_image(selected_file_path, faction.id)
+                if processed_image_filename:
+                    faction.image = processed_image_filename
+                    image_display.src = faction.image
+                    image_display.visible = True
+                    page.update()
+
+        pick_image_dialog = ft.FilePicker(on_result=pick_image_result)
+        page.overlay.append(pick_image_dialog)
+
+        image_field = ft.TextField(
+            label="Image URL",
+            value=faction.image,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            read_only=True # Make it read-only as it's set by the picker
+        )
+
+        upload_image_button = ft.ElevatedButton(
+            text="Upload Image",
+            icon=ft.Icons.UPLOAD_FILE,
+            on_click=lambda e: pick_image_dialog.pick_files(allow_multiple=False),
+            bgcolor="#64B5F6",
+            color="#FFFFFF"
+        )
         resources_field = ft.TextField(label="Resources (comma-separated)", value=", ".join(faction.resources), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         ally_factions_field = ft.TextField(label="Ally Factions (comma-separated IDs)", value=", ".join(faction.allyFactions), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         enemy_factions_field = ft.TextField(label="Enemy Factions (comma-separated IDs)", value=", ".join(faction.enemyFactions), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -1172,6 +1312,8 @@ def main(page: ft.Page):
         return ft.Column(
             [
                 ft.Text(f"Faction Details: {faction.name}", color="#FFFFFF", size=20),
+                image_display,
+                upload_image_button,
                 name_field,
                 description_field,
                 archetype_field,
@@ -1236,7 +1378,40 @@ def main(page: ft.Page):
             fill_color="#3A4D60",
         )
         dominant_faction_field = ft.TextField(label="Dominant Faction", value=district.dominantFaction, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        image_field = ft.TextField(label="Image URL", value=district.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_display = ft.Image(src=district.image if district.image else None, width=100, height=100, fit=ft.ImageFit.CONTAIN)
+
+        def pick_image_result(e: ft.FilePickerResultEvent):
+            if e.files:
+                selected_file_path = e.files[0].path
+                processed_image_filename = process_and_save_image(selected_file_path, district.id)
+                if processed_image_filename:
+                    district.image = processed_image_filename
+                    image_display.src = district.image
+                    image_display.visible = True
+                    page.update()
+
+        pick_image_dialog = ft.FilePicker(on_result=pick_image_result)
+        page.overlay.append(pick_image_dialog)
+
+        image_field = ft.TextField(
+            label="Image URL",
+            value=district.image,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            read_only=True # Make it read-only as it's set by the picker
+        )
+
+        upload_image_button = ft.ElevatedButton(
+            text="Upload Image",
+            icon=ft.Icons.UPLOAD_FILE,
+            on_click=lambda e: pick_image_dialog.pick_files(allow_multiple=False),
+            bgcolor="#64B5F6",
+            color="#FFFFFF"
+        )
         notable_features_field = ft.TextField(label="Notable Features (comma-separated)", value=", ".join(district.notableFeatures), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         key_locations_field = ft.TextField(label="Key Locations (comma-separated IDs)", value=", ".join(district.keyLocations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
 
@@ -1273,6 +1448,8 @@ def main(page: ft.Page):
         return ft.Column(
             [
                 ft.Text(f"District Details: {district.name}", color="#FFFFFF", size=20),
+                image_display,
+                upload_image_button,
                 name_field,
                 description_field,
                 wealth_class_field,
@@ -1335,7 +1512,40 @@ def main(page: ft.Page):
             filled=True,
             fill_color="#3A4D60",
         )
-        image_field = ft.TextField(label="Image URL", value=item.image, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
+        image_display = ft.Image(src=item.image if item.image else None, width=100, height=100, fit=ft.ImageFit.CONTAIN)
+
+        def pick_image_result(e: ft.FilePickerResultEvent):
+            if e.files:
+                selected_file_path = e.files[0].path
+                processed_image_filename = process_and_save_image(selected_file_path, item.id)
+                if processed_image_filename:
+                    item.image = processed_image_filename
+                    image_display.src = item.image
+                    image_display.visible = True
+                    page.update()
+
+        pick_image_dialog = ft.FilePicker(on_result=pick_image_result)
+        page.overlay.append(pick_image_dialog)
+
+        image_field = ft.TextField(
+            label="Image URL",
+            value=item.image,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6",
+            filled=True,
+            fill_color="#3A4D60",
+            read_only=True # Make it read-only as it's set by the picker
+        )
+
+        upload_image_button = ft.ElevatedButton(
+            text="Upload Image",
+            icon=ft.Icons.UPLOAD_FILE,
+            on_click=lambda e: pick_image_dialog.pick_files(allow_multiple=False),
+            bgcolor="#64B5F6",
+            color="#FFFFFF"
+        )
         type_field = ft.TextField(label="Type", value=item.type, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         default_location_field = ft.TextField(label="Default Location ID", value=item.defaultLocation, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
         default_owner_field = ft.TextField(label="Default Owner ID", value=item.defaultOwner, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
@@ -1381,6 +1591,8 @@ def main(page: ft.Page):
         return ft.Column(
             [
                 ft.Text(f"Item Details: {item.name}", color="#FFFFFF", size=20),
+                image_display,
+                upload_image_button,
                 name_field,
                 description_field,
                 possible_means_field,
