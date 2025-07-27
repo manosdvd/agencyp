@@ -73,6 +73,36 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor = "#1A2B3C"  # Dark navy blue
 
+    # Main content area, will be updated based on tab selection
+    main_content_area = ft.Column(
+        [ft.Text("Select a tab to begin", color="#9E9E9E")],
+        expand=True,
+        alignment=ft.MainAxisAlignment.START,
+        horizontal_alignment=ft.CrossAxisAlignment.START,
+    )
+
+    def change_main_tab(e):
+        if e.control.selected_index == 0: # World Builder
+            main_content_area.controls.clear()
+            main_content_area.controls.append(create_world_builder_view())
+        elif e.control.selected_index == 1: # Case Builder
+            main_content_area.controls.clear()
+            main_content_area.controls.append(create_case_builder_view())
+        page.update()
+
+    page.appbar.bottom = ft.Tabs(
+        selected_index=0,
+        animation_duration=300,
+        on_change=change_main_tab,
+        tabs=[
+            ft.Tab(text="World Builder", icon=ft.Icons.PUBLIC),
+            ft.Tab(text="Case Builder", icon=ft.Icons.ASSIGNMENT),
+        ],
+        indicator_color="#64B5F6",
+        label_color="#64B5F6",
+        unselected_label_color="#9E9E9E",
+    )
+
     # --- Data Storage (in-memory for now) ---
     characters: list[Character] = []
     characters_by_id: dict[str, Character] = {} # New in-memory index
@@ -1798,7 +1828,7 @@ def main(page: ft.Page):
             text_style=ft.TextStyle(color="#FFFFFF"),
             label_style=ft.TextStyle(color="#9E9E9E"),
             border_color="#3A4D60",
-            focused_border_color="#64B5F6", # Light blue for focus
+            focused_border_color="#64B5F6",
             filled=True,
             fill_color="#3A4D60",
         )
@@ -2117,21 +2147,21 @@ def main(page: ft.Page):
 
         # Populate on load
         items_list_view.controls.clear()
-        for item_obj in items:
-            items_list_view.controls.append(ft.GestureDetector(content=ft.Text(item_obj.name, color="#FFFFFF"), on_tap=lambda e, item=item_obj: select_item(item)))
+        for item in items:
+            items_list_view.controls.append(ft.GestureDetector(content=ft.Text(item.name, color="#FFFFFF"), on_tap=lambda e, item=item: select_item(item)))
 
         def add_item(e):
             if item_name_input.value:
                 new_item = Item(
                     id=str(uuid.uuid4()),
                     name=item_name_input.value,
-                    description="", # Placeholder
-                    possibleMeans=False, # Placeholder
-                    possibleMotive=False, # Placeholder
-                    possibleOpportunity=False, # Placeholder
-                    cluePotential="None", # Placeholder
-                    value="", # Placeholder
-                    condition="New", # Placeholder
+                    description="",
+                    possibleMeans=False,
+                    possibleMotive=False,
+                    possibleOpportunity=False,
+                    cluePotential="None",
+                    value="",
+                    condition="New",
                 )
                 items.append(new_item)
                 items_by_id[new_item.id] = new_item # Add to index
@@ -2195,8 +2225,8 @@ def main(page: ft.Page):
 
         # Populate on load
         clues_list_view.controls.clear()
-        for clue_obj in clues:
-            clues_list_view.controls.append(ft.GestureDetector(content=ft.Text(clue_obj.clueSummary, color="#FFFFFF"), on_tap=lambda e, clue=clue_obj: select_clue(clue)))
+        for clue in clues:
+            clues_list_view.controls.append(ft.GestureDetector(content=ft.Text(clue.clueSummary, color="#FFFFFF"), on_tap=lambda e, clue=clue: select_clue(clue)))
 
         def add_clue(e):
             if clue_summary_input.value:
@@ -2256,6 +2286,79 @@ def main(page: ft.Page):
             padding=20
         )
 
+    def create_timeline_events_view():
+        timeline_event_name_input = ft.TextField(
+            label="Timeline Event Name",
+            hint_text="Enter event name",
+            width=300,
+            text_style=ft.TextStyle(color="#FFFFFF"),
+            label_style=ft.TextStyle(color="#9E9E9E"),
+            border_color="#3A4D60",
+            focused_border_color="#64B5F6", # Light blue for focus
+            filled=True,
+            fill_color="#3A4D60",
+        )
+
+        # Populate on load
+        timeline_events_list_view.controls.clear()
+        for event in timeline_events:
+            timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(event.name, color="#FFFFFF"), on_tap=lambda e, event=event: select_timeline_event(event)))
+
+        def add_timeline_event(e):
+            if timeline_event_name_input.value:
+                new_event = TimelineEvent(
+                    id=str(uuid.uuid4()),
+                    name=timeline_event_name_input.value,
+                    description="",
+                    timestamp="",
+                )
+                timeline_events.append(new_event)
+                timeline_events_by_id[new_event.id] = new_event # Add to index
+                timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_event.name, color="#FFFFFF"), on_tap=lambda e, event=new_event: select_timeline_event(event))) # Use GestureDetector
+                timeline_event_name_input.value = ""
+                save_timeline_events() # Save events after adding
+                run_validation() # Run validation after modification
+                page.update()
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text("Gamified Timeline Editor", color="#FFFFFF", size=20),
+                    ft.Text("List of timeline events and their details will go here.", color="#9E9E9E"),
+                    ft.Row(
+                        [
+                            timeline_event_name_input,
+                            ft.ElevatedButton(
+                                text="Add Event",
+                                icon=ft.Icons.ADD,
+                                bgcolor="#64B5F6",
+                                color="#FFFFFF",
+                                on_click=add_timeline_event
+                            ),
+                        ]
+                    ),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=timeline_events_list_view,
+                                expand=1,
+                                border=ft.border.all(1, "#3A4D60"),
+                                border_radius=5,
+                                padding=ft.padding.all(10)
+                            ),
+                            timeline_event_detail_container,
+                        ],
+                        expand=True
+                    )
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            expand=True,
+            padding=20
+        )
+
     def create_lore_history_view():
         lore_history_text_field = ft.TextField(
             label="Lore and World History",
@@ -2273,7 +2376,7 @@ def main(page: ft.Page):
             expand=True
         )
 
-        def save_lore_history(e):
+        def save_lore_history_details(e):
             nonlocal lore_history_text
             lore_history_text = lore_history_text_field.value
             save_lore_history() # Save lore history after modification
@@ -2291,7 +2394,7 @@ def main(page: ft.Page):
                         icon=ft.Icons.SAVE,
                         bgcolor="#64B5F6",
                         color="#FFFFFF",
-                        on_click=save_lore_history
+                        on_click=save_lore_history_details
                     )
                 ],
                 expand=True,
@@ -2364,6 +2467,7 @@ def main(page: ft.Page):
                         expand=True,
                         border=ft.border.all(1, "#3A4D60"),
                         border_radius=5,
+                        padding=ft.padding.all(10),
                         clip_behavior=ft.ClipBehavior.HARD_EDGE, # Clip content outside bounds
                         scroll=ft.ScrollMode.AUTO # Enable scrolling
                     )
@@ -2376,245 +2480,124 @@ def main(page: ft.Page):
             padding=20
         )
 
-    # --- Timeline Event Detail View ---
-    def create_timeline_event_detail_view(event: TimelineEvent, timeline_events_list_view, timeline_event_detail_container, select_timeline_event):
-        name_field = ft.TextField(label="Event Name", value=event.name, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        description_field = ft.TextField(label="Description", value=event.description, multiline=True, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        timestamp_field = ft.TextField(label="Timestamp", value=event.timestamp, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        associated_characters_field = ft.TextField(label="Associated Characters (comma-separated IDs)", value=", ".join(event.associatedCharacters), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        associated_locations_field = ft.TextField(label="Associated Locations (comma-separated IDs)", value=", ".join(event.associatedLocations), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        associated_items_field = ft.TextField(label="Associated Items (comma-separated IDs)", value=", ".join(event.associatedItems), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        clues_generated_field = ft.TextField(label="Clues Generated (comma-separated IDs)", value=", ".join(event.cluesGenerated), text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-        reveals_truth_field = ft.Checkbox(label="Reveals Truth", value=event.revealsTruth, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
-        reveals_lie_field = ft.Checkbox(label="Reveals Lie", value=event.revealsLie, check_color="#64B5F6", label_style=ft.TextStyle(color="#FFFFFF"))
-        lie_debunked_field = ft.TextField(label="Lie Debunked ID", value=event.lieDebunked, text_style=ft.TextStyle(color="#FFFFFF"), label_style=ft.TextStyle(color="#9E9E9E"), border_color="#3A4D60", focused_border_color="#64B5F6", filled=True, fill_color="#3A4D60")
-
-        def save_timeline_event_details(e):
-            event.name = name_field.value
-            event.description = description_field.value
-            event.timestamp = timestamp_field.value
-            event.associatedCharacters = [c.strip() for c in associated_characters_field.value.split(',') if c.strip()]
-            event.associatedLocations = [l.strip() for l in associated_locations_field.value.split(',') if l.strip()]
-            event.associatedItems = [i.strip() for i in associated_items_field.value.split(',') if i.strip()]
-            event.cluesGenerated = [cg.strip() for cg in clues_generated_field.value.split(',') if cg.strip()]
-            event.revealsTruth = reveals_truth_field.value
-            event.revealsLie = reveals_lie_field.value
-            event.lieDebunked = lie_debunked_field.value
-
-            timeline_events_list_view.controls.clear()
-            for event_obj in timeline_events:
-                timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(event_obj.name, color="#FFFFFF"), on_tap=lambda e, event=event_obj: select_timeline_event(event))) # Use GestureDetector
-            save_timeline_events()
-            run_validation()
+    def create_world_builder_view():
+        def change_world_builder_tab(e):
+            selected_tab_index = e.control.selected_index
+            if selected_tab_index == 0:
+                world_builder_content.content = create_characters_view()
+            elif selected_tab_index == 1:
+                world_builder_content.content = create_locations_view()
+            elif selected_tab_index == 2:
+                world_builder_content.content = create_factions_view()
+            elif selected_tab_index == 3:
+                world_builder_content.content = create_districts_view()
+            elif selected_tab_index == 4:
+                world_builder_content.content = create_items_view()
+            elif selected_tab_index == 5:
+                world_builder_content.content = create_lore_history_view()
             page.update()
 
-        def delete_timeline_event(e):
-            del timeline_events_by_id[event.id] # Remove from index
-            timeline_events.remove(event)
-            timeline_events_list_view.controls.clear()
-            for event_obj in timeline_events:
-                timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(event_obj.name, color="#FFFFFF"), on_tap=lambda e, event=event_obj: select_timeline_event(event))) # Use GestureDetector
-            timeline_event_detail_container.content = ft.Column([ft.Text("Select a timeline event to view details", color="#9E9E9E")])
-            save_timeline_events()
-            run_validation()
-            page.update()
-
-        return ft.Column(
-            [
-                ft.Text(f"Timeline Event Details: {event.name}", color="#FFFFFF", size=20),
-                name_field,
-                description_field,
-                timestamp_field,
-                associated_characters_field,
-                associated_locations_field,
-                associated_items_field,
-                clues_generated_field,
-                reveals_truth_field,
-                reveals_lie_field,
-                lie_debunked_field,
-                ft.Row(
-                    [
-                        ft.ElevatedButton(
-                            text="Save Changes",
-                            icon=ft.Icons.SAVE,
-                            bgcolor="#64B5F6",
-                            color="#FFFFFF",
-                            on_click=save_timeline_event_details
-                        ),
-                        ft.ElevatedButton(
-                            text="Delete Event",
-                            icon=ft.Icons.DELETE,
-                            bgcolor="#FF5252", # Red for delete
-                            color="#FFFFFF",
-                            on_click=delete_timeline_event
-                        ),
-                    ]
-                )
-            ],
-            scroll=ft.ScrollMode.ADAPTIVE,
+        world_builder_content = ft.Container(
+            content=create_characters_view(), # Default to characters view
             expand=True
         )
 
-    def create_timeline_view():
-        timeline_name_input = ft.TextField(
-            label="Event Name",
-            hint_text="Enter event name",
-            width=300,
-            text_style=ft.TextStyle(color="#FFFFFF"),
-            label_style=ft.TextStyle(color="#9E9E9E"),
-            border_color="#3A4D60",
-            focused_border_color="#64B5F6", # Light blue for focus
-            filled=True,
-            fill_color="#3A4D60",
+        return ft.Column(
+            [
+                ft.Tabs(
+                    selected_index=0,
+                    animation_duration=300,
+                    on_change=change_world_builder_tab,
+                    tabs=[
+                        ft.Tab(text="Characters", icon=ft.Icons.PERSON),
+                        ft.Tab(text="Locations", icon=ft.Icons.LOCATION_ON),
+                        ft.Tab(text="Factions", icon=ft.Icons.GROUPS),
+                        ft.Tab(text="Districts", icon=ft.Icons.MAP),
+                        ft.Tab(text="Items", icon=ft.Icons.WORK),
+                        ft.Tab(text="Lore & History", icon=ft.Icons.HISTORY),
+                    ],
+                    indicator_color="#64B5F6",
+                    label_color="#64B5F6",
+                    unselected_label_color="#9E9E9E",
+                ),
+                world_builder_content,
+            ],
+            expand=True
         )
 
-        # Populate on load
-        timeline_events_list_view.controls.clear()
-        for event_obj in timeline_events:
-            timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(event_obj.name, color="#FFFFFF"), on_tap=lambda e, event=event_obj: select_timeline_event(event)))
+    def create_case_builder_view():
+        def change_case_builder_tab(e):
+            selected_tab_index = e.control.selected_index
+            if selected_tab_index == 0:
+                case_builder_content.content = create_case_meta_view()
+            elif selected_tab_index == 1:
+                case_builder_content.content = create_clues_view()
+            elif selected_tab_index == 2:
+                case_builder_content.content = create_timeline_events_view()
+            elif selected_tab_index == 3:
+                case_builder_content.content = create_bulletin_board_view()
+            page.update()
 
-        def add_timeline_event(e):
-            if timeline_name_input.value:
-                new_event = TimelineEvent(
-                    id=str(uuid.uuid4()),
-                    name=timeline_name_input.value,
-                    description="", # Placeholder
-                    timestamp="", # Placeholder
-                )
-                timeline_events.append(new_event)
-                timeline_events_by_id[new_event.id] = new_event # Add to index
-                timeline_events_list_view.controls.append(ft.GestureDetector(content=ft.Text(new_event.name, color="#FFFFFF"), on_tap=lambda e, event=new_event: select_timeline_event(event))) # Use GestureDetector
-                timeline_name_input.value = ""
-                save_timeline_events()
-                run_validation()
-                page.update()
-
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Gamified Timeline Editor", color="#FFFFFF", size=20),
-                    ft.Text("List of timeline events and their details will go here.", color="#9E9E9E"),
-                    ft.Row(
-                        [
-                            timeline_name_input,
-                            ft.ElevatedButton(
-                                text="Add Event",
-                                icon=ft.Icons.ADD,
-                                bgcolor="#64B5F6",
-                                color="#FFFFFF",
-                                on_click=add_timeline_event
-                            ),
-                        ]
-                    ),
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=timeline_events_list_view,
-                                expand=1,
-                                border=ft.border.all(1, "#3A4D60"),
-                                border_radius=5,
-                                padding=ft.padding.all(10)
-                            ),
-                            timeline_event_detail_container,
-                        ],
-                        expand=True
-                    )
-                ],
-                expand=True,
-                alignment=ft.MainAxisAlignment.START,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            expand=True,
-            padding=20
+        case_builder_content = ft.Container(
+            content=create_case_meta_view(), # Default to case meta view
+            expand=True
         )
 
-    
+        return ft.Column(
+            [
+                ft.Tabs(
+                    selected_index=0,
+                    animation_duration=300,
+                    on_change=change_case_builder_tab,
+                    tabs=[
+                        ft.Tab(text="Case Metadata", icon=ft.Icons.INFO),
+                        ft.Tab(text="Clues", icon=ft.Icons.SEARCH),
+                        ft.Tab(text="Timeline", icon=ft.Icons.TIMELINE),
+                        ft.Tab(text="Bulletin Board", icon=ft.Icons.DASHBOARD),
+                    ],
+                    indicator_color="#64B5F6",
+                    label_color="#64B5F6",
+                    unselected_label_color="#9E9E9E",
+                ),
+                case_builder_content,
+            ],
+            expand=True
+        )
 
-    # Populate sample data if no characters exist (simple check to avoid overwriting existing data)
-    # Run initial validation
+    # Initial load of data and UI
     load_all_data()
     page.update()
 
     # --- Main Content Area ---
-    main_content_area = ft.Column([create_characters_view()], expand=True)
-
-    # --- Secondary Navigation ---
-    secondary_nav_column = ft.Column(
-        [
-            ft.IconButton(icon=ft.Icons.PERSON, tooltip="Characters", on_click=lambda e: update_main_content(create_characters_view())),
-            ft.IconButton(icon=ft.Icons.LOCATION_ON, tooltip="Locations", on_click=lambda e: update_main_content(create_locations_view())),
-            ft.IconButton(icon=ft.Icons.GROUPS, tooltip="Factions", on_click=lambda e: update_main_content(create_factions_view())),
-            ft.IconButton(icon=ft.Icons.HOME, tooltip="Districts", on_click=lambda e: update_main_content(create_districts_view())),
-            ft.IconButton(icon=ft.Icons.WORK, tooltip="Items", on_click=lambda e: update_main_content(create_items_view())),
-            ft.IconButton(icon=ft.Icons.HISTORY, tooltip="Lore & History", on_click=lambda e: update_main_content(create_lore_history_view())),
-        ],
-        spacing=10,
-        alignment=ft.MainAxisAlignment.START,
-    )
-
-    secondary_nav_container = ft.Container(
-        content=secondary_nav_column,
-        width=70,
-        height=page.height, # This will be dynamic
-        bgcolor="#2C3E50",
-        padding=ft.padding.symmetric(vertical=10),
-        alignment=ft.alignment.top_center,
-    )
-
-    def update_main_content(new_content):
-        main_content_area.controls.clear()
-        main_content_area.controls.append(new_content)
-        page.update()
-
-    def on_navigation_change(e):
-        if e.control.selected_index == 0:  # World Builder
-            secondary_nav_column.controls.clear()
-            secondary_nav_column.controls.extend([
-                ft.IconButton(icon=ft.Icons.PERSON, tooltip="Characters", on_click=lambda e: update_main_content(create_characters_view())),
-                ft.IconButton(icon=ft.Icons.LOCATION_ON, tooltip="Locations", on_click=lambda e: update_main_content(create_locations_view())),
-                ft.IconButton(icon=ft.Icons.GROUPS, tooltip="Factions", on_click=lambda e: update_main_content(create_factions_view())),
-                ft.IconButton(icon=ft.Icons.HOME, tooltip="Districts", on_click=lambda e: update_main_content(create_districts_view())),
-                ft.IconButton(icon=ft.Icons.WORK, tooltip="Items", on_click=lambda e: update_main_content(create_items_view())),
-                ft.IconButton(icon=ft.Icons.HISTORY, tooltip="Lore & History", on_click=lambda e: update_main_content(create_lore_history_view())),
-            ])
-            update_main_content(create_characters_view()) # Default to Characters view
-        elif e.control.selected_index == 1:  # Case Builder
-            secondary_nav_column.controls.clear()
-            secondary_nav_column.controls.extend([
-                ft.IconButton(icon=ft.Icons.DESCRIPTION, tooltip="Case Metadata", on_click=lambda e: update_main_content(create_case_meta_view())),
-                ft.IconButton(icon=ft.Icons.DASHBOARD, tooltip="Bulletin Board", on_click=lambda e: update_main_content(create_bulletin_board_view())),
-                ft.IconButton(icon=ft.Icons.ACCESS_TIME, tooltip="Timeline", on_click=lambda e: update_main_content(create_timeline_view())),
-                ft.IconButton(icon=ft.Icons.LIGHTBULB, tooltip="Clues", on_click=lambda e: update_main_content(create_clues_view())),
-            ])
-            update_main_content(create_case_meta_view()) # Default to Case Metadata view
-        page.update()
-
-    page.appbar = ft.AppBar(
-        title=ft.Text("The Agency", color="#FFFFFF"),
-        center_title=False,
-        bgcolor="#2C3E50",
-        actions=[
-            ft.TextField(
-                hint_text="Global Search...",
-                width=300,
-                content_padding=ft.padding.only(left=10, right=10),
-                border_radius=5,
-                filled=True,
-                fill_color="#3A4D60",
-                text_style=ft.TextStyle(color="#FFFFFF"),
-                hint_style=ft.TextStyle(color="#9E9E9E"), # Grey 500 equivalent
-                border_color="#00000000", # Transparent
-            ),
-            ft.IconButton(icon=ft.Icons.SEARCH, icon_color="#FFFFFF"),
-        ]
-    )
+    main_content_area = ft.Column([create_world_builder_view()], expand=True) # Default to World Builder view
 
     page.add(
         ft.Row(
             [
-                secondary_nav_container,
+                ft.Column(
+                    [
+                        ft.Text("Global Search", color="#FFFFFF", size=18),
+                        ft.TextField(
+                            hint_text="Search...",
+                            width=280,
+                            text_style=ft.TextStyle(color="#FFFFFF"),
+                            label_style=ft.TextStyle(color="#9E9E9E"),
+                            border_color="#3A4D60",
+                            focused_border_color="#64B5F6",
+                            filled=True,
+                            fill_color="#3A4D60",
+                        ),
+                        ft.Divider(),
+                        validator_panel,
+                    ],
+                    width=300,
+                    
+                    spacing=10,
+
+
+                ),
+                ft.VerticalDivider(),
                 main_content_area,
-                validator_panel # Add validator panel to the right
             ],
             expand=True,
         )
