@@ -1,67 +1,99 @@
-The Agency
-A tool for authoring intricate and logically sound detective stories.
-Overview
-The Agency is a standalone desktop application designed to be an all-in-one authoring tool for writers and game designers. Its mission is to solve a core problem in mystery writing: managing the immense complexity of a compelling narrative while ensuring the final story is both logically sound and deeply satisfying for the audience.
-It provides a structured, visually-driven environment that separates the creative process into three distinct phases, empowering creators to focus on the art of storytelling by providing a robust framework to manage the science of a perfectly constructed mystery.
-Core Features
-The Agency is built around a powerful workflow that guides the author from world-building to final validation.
-1. Build a Living World
-Create a rich, interconnected database of every person, place, and object that forms the foundation of your narrative. This is about defining the "ground truth" of your universe before the crime even happens.
- * Create a Rich Database: Build a repository of every person, place, and object relevant to your story.
- * Specialized Visual Tools: Go beyond simple forms with dedicated editors for:
-   * Social Graphs: Visually map character relationships (allies, rivals, family).
-   * Geographical Maps: Define the spatial relationships between key locations.
-   * Faction Dynamics: Model the power structures and conflicts between different groups.
- * Interconnected Assets: Develop characters with detailed profiles, vivid locations, and significant items that can organically serve as clues, motives, or alibis.
-2. Construct a Case
-Weave your world assets into a dynamic plot by defining the central crime and crafting the narrative path using intuitive, visual tools.
- * The Interactive Bulletin Board: The centerpiece of the Case Builder. A visual, node-based "murder board" where you can drag and drop assets, draw connections, and see the entire web of causality at a glance.
- * The Gamified Timeline Editor: Construct the case's ground-truth eventChain with a guided, interactive timeline. Work backward from the crime as the software prompts you with causal questions, turning a complex logical task into an engaging puzzle.
- * Detailed Narrative Crafting: Create interview questions, define lies, and explicitly link them to the clues that can debunk them, ensuring every piece of dialogue serves a purpose.
-3. Ensure a Solvable Mystery
-The Validator is the software's "secret sauce"—an intelligent story editor that acts as an impartial judge of your case's logic and quality, providing real-time feedback as you write.
- * Automated Logic Checker: The Validator runs constantly in the background, providing live feedback on the structural integrity of your mystery.
- * Prevent Plot Holes: The multi-tiered system identifies critical errors and provides actionable suggestions to fix them:
-   * Logical Errors: Catches "orphan" clues that can't be discovered, "undebunkable" lies, and circular logic.
-   * Narrative Warnings: Flags potential playability issues like a lack of plausible suspects, weak red herrings, or poor pacing.
-   * Cognitive Analysis: Warns you if the beginning of your case might overwhelm the player with too much information.
- * Focus on Creativity: Let the software handle the logical bookkeeping so you can focus on telling a great story.
-Getting Started
-To get started with The Agency, follow these steps:
- * Clone the repository:
-   git clone https://github.com/manosdvd/agency-py.git
+# The Agency: A Detective Story Authoring Tool
 
- * Navigate to the project directory:
-   cd agency-py
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 
- * Install dependencies:
-   pip install -r requirements.txt
+This repository contains the source code for "The Agency," a standalone desktop application for authoring intricate and logically sound detective stories. It provides a comprehensive, intuitive environment for creating, managing, and rigorously validating all game data, from individual CaseFile mysteries to the global lore and assets of the game world.
 
- * Run the application:
-   python3 main.py
+## Core Features
 
-Project Structure
-agency-py/
+*   **World Builder:** A suite of specialized visual tools for creating and managing characters, locations, factions, and lore.
+*   **Case Builder:** A powerful workspace for structuring the case, including an interactive bulletin board (Plot Graph) and a gamified timeline editor (eventChain).
+*   **The Validator:** An intelligent "story editor" that provides real-time, actionable feedback on the logical consistency and playability of the story.
+*   **Data-driven:** The application uses a human-readable JSON file-based data storage model, making it easy to version control and use with other tools.
+*   **Noir-themed UI:** A visually engaging interface with a classic noir aesthetic and modern usability.
+
+## Getting Started
+
+### Prerequisites
+
+*   Python 3.10+ is required.
+
+### Installation & Setup
+
+1.  **Clone the repository:**
+
+    ```bash
+    git clone https://github.com/manosdvd/agencyp.git
+    cd agencyp
+    ```
+
+2.  **Create and activate a virtual environment:**
+
+    *This is a required step.*
+
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+3.  **Install the dependencies:**
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## Usage
+
+To run the application, execute the following command from the project root directory:
+
+```bash
+python3 main.py
+```
+
+## Project Structure
+
+```
+.agencyp/
 ├── .gitignore
-├── blueprint.md        # Project vision and design documentation
-├── case_builder.py     # UI components for the Case Builder view
-├── data_manager.py     # Handles loading and saving of case/world data
-├── main.py             # Main application entry point (Flet UI)
-├── my_control.py       # Contains the core application logic and state
-├── README.md           # This file
-├── requirements.txt    # Project dependencies
-├── schemas.py          # Defines the data structures for the application
-├── validator.py        # UI components for the Validator view
-└── cases/              # Contains all case data
-    └── the_crimson_stain/
-        ├── case_data.json
-        └── world_data/
-            ├── characters.json
-            ├── districts.json
-            ├── factions.json
-            ├── items.json
-            ├── locations.json
-            └── sleuth.json
+├── blueprint.md
+├── data/
+│   ├── characters.json
+│   ├── districts.json
+│   └── images/
+├── main.py
+├── README.md
+├── requirements.txt
+├── schemas.py
+└── venv/
+```
 
-Contributing
-Contributions are welcome! If you have any ideas, suggestions, or bug reports, please open an issue or submit a pull request.
+*   `main.py`: The main entry point for the application.
+*   `schemas.py`: Defines the Pydantic models for the data schemas.
+*   `data/`: Contains the JSON data files for the world and case assets.
+*   `blueprint.md`: The project's master plan and single source of truth.
+*   `requirements.txt`: A list of the Python dependencies for the project.
+*   `venv/`: The Python virtual environment directory.
+
+## Development Notes
+
+*   **Virtual Environment:** All development and execution *must* be done within the project's `venv`. Activate it with `source venv/bin/activate`.
+*   **Flet UI Framework:**
+    *   **Icon Naming:** Flet's `ft.icons` requires icon names to be in all capital letters (e.g., `ft.icons.ADD` not `ft.icons.add`).
+    *   **Event Handler Functions:** Functions assigned to `on_click` or other events must be defined before the UI component that uses them is instantiated.
+    *   **State Management:** UI updates require explicitly calling `page.update()`. For complex, nested controls, it's often necessary to pass the `page` object down to child controls or use a more robust state management pattern.
+
+## Technology Stack
+
+*   **Python:** The core programming language.
+*   **Flet:** The UI framework for building the desktop application.
+*   **Pydantic:** Used for data validation and schema definition.
+
+## Roadmap
+
+The project is divided into three strategic phases:
+
+*   **Phase I (V1 - The Comprehensive Editor & Validator):** Build a robust manual editor for creating all world and case data, coupled with integrated real-time and pre-export logical validation.
+*   **Phase II (V2 - The World-Builder & Plot Graph):** Expand the tool to manage global game world data more dynamically and introduce advanced creative assistance tools, including the fully interactive plot graph.
+*   **Phase III (V3 - The Generator):** Introduce procedural generation capabilities to assist in the rapid creation of case skeletons and characters.
+
+For more details, please refer to the [project blueprint](blueprint.md).
