@@ -1,0 +1,19 @@
+[
+    {
+        "id": "aa187a3e-eb3f-4e1d-840c-83c8b7ca9b93",
+        "name": "Skipper's Pub",
+        "description": "",
+        "type": null,
+        "district": null,
+        "owningFaction": null,
+        "dangerLevel": null,
+        "population": null,
+        "image": null,
+        "keyCharacters": [],
+        "associatedItems": [],
+        "accessibility": null,
+        "hidden": false,
+        "internalLogicNotes": null,
+        "clues": []
+    }
+]
