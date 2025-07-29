@@ -1,4 +1,4 @@
-flet
+PySide6
 pytest
 transformers
 Pillow

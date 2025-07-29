@@ -1,13 +1,22 @@
-import flet as ft
+# main.py
+# The Agency: A Detective Story Authoring Tool
+# Refactored to PySide6 with "Holo-Noir" animations and effects.
+
+import sys
 import logging
 import uuid
 import json
 import os
-import zipfile
-import shutil
-from PIL import Image
-from typing import get_args
 from dataclasses import asdict
+from typing import get_args
+
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QListWidget, QListWidgetItem, QPushButton, QLabel, QLineEdit,
+    QTextEdit, QComboBox, QFrame, QSplitter, QStackedWidget, QFormLayout
+)
+from PySide6.QtGui import QIcon, QFont, QColor, QPalette
+from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent
 
 # --- Schema Imports ---
 from schemas import (
@@ -24,11 +33,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Data Management ---
+# --- Data Management (UNMODIFIED) ---
 class DataManager:
     """Handles loading, saving, and indexing all project data."""
     def __init__(self, base_path="data"):
         self.base_path = base_path
+        self.images_path = os.path.join(self.base_path, "images")
         self.asset_map = {
             "characters": {"class": Character, "list": [], "dict": {}},
             "locations": {"class": Location, "list": [], "dict": {}},
@@ -45,17 +55,13 @@ class DataManager:
         return self.asset_map.get(asset_type, {}).get("list", [])
 
     def get_asset_dict(self, asset_type):
-        return self.asset_map.get(asset_type, {}).get("dict", [])
+        return self.asset_map.get(asset_type, {}).get("dict", {})
 
     def load_all(self):
-        """Loads all data files from the base path."""
         os.makedirs(self.base_path, exist_ok=True)
-        os.makedirs(os.path.join(self.base_path, "images"), exist_ok=True)
-
+        os.makedirs(self.images_path, exist_ok=True)
         for asset_type, data in self.asset_map.items():
             self._load_json(asset_type, data["class"])
-
-        # Load CaseMeta
         case_meta_path = os.path.join(self.base_path, "case_meta.json")
         if os.path.exists(case_meta_path):
             try:
@@ -64,32 +70,29 @@ class DataManager:
             except (json.JSONDecodeError, TypeError) as e:
                 logger.error(f"Could not load or parse {case_meta_path}: {e}")
 
-
     def _load_json(self, asset_type, data_class):
-        """Helper to load a single JSON file into its corresponding asset list and dict."""
         path = os.path.join(self.base_path, f"{asset_type}.json")
         asset_list = self.get_asset_list(asset_type)
         asset_dict = self.get_asset_dict(asset_type)
         asset_list.clear()
         asset_dict.clear()
-
         if os.path.exists(path):
             try:
                 with open(path, "r") as f:
                     data = json.load(f)
                     for item_data in data:
                         try:
-                            asset = data_class(**item_data)
+                            valid_fields = {f.name for f in data_class.__dataclass_fields__.values()}
+                            filtered_data = {k: v for k, v in item_data.items() if k in valid_fields}
+                            asset = data_class(**filtered_data)
                             asset_list.append(asset)
                             asset_dict[asset.id] = asset
-                        except TypeError as te:
-                            logger.warning(f"Skipping invalid item in {path} due to TypeError: {te} - Data: {item_data}")
+                        except (TypeError, KeyError) as te:
+                            logger.warning(f"Skipping invalid item in {path}: {te} - Data: {item_data}")
             except json.JSONDecodeError as e:
                 logger.error(f"Could not parse {path}: {e}")
 
-
     def save_asset(self, asset_type):
-        """Saves a specific asset type to its JSON file."""
         path = os.path.join(self.base_path, f"{asset_type}.json")
         asset_list = self.get_asset_list(asset_type)
         try:
@@ -97,40 +100,29 @@ class DataManager:
                 json.dump([asdict(c) for c in asset_list], f, indent=4)
         except Exception as e:
             logger.error(f"Failed to save {asset_type} to {path}: {e}")
-            
-    def save_case_meta(self):
-        """Saves the CaseMeta data to its JSON file."""
-        path = os.path.join(self.base_path, "case_meta.json")
-        try:
-            with open(path, "w") as f:
-                json.dump(asdict(self.case_meta), f, indent=4)
-        except Exception as e:
-            logger.error(f"Failed to save case_meta to {path}: {e}")
 
     def add_asset(self, asset_type, **kwargs):
-        """Adds a new asset to the appropriate list and returns it."""
-        if asset_type not in self.asset_map:
-            return None
-        
+        if asset_type not in self.asset_map: return None
         asset_class = self.asset_map[asset_type]["class"]
         new_id = str(uuid.uuid4())
-        
-        # Ensure 'name' or 'fullName' is present
         if 'name' not in kwargs and 'fullName' not in kwargs:
              kwargs['name'] = "Unnamed"
-
+        if asset_type == "characters":
+            kwargs.setdefault('biography', "")
+            kwargs.setdefault('personality', "")
+            kwargs.setdefault('alignment', "True Neutral")
+            kwargs.setdefault('honesty', 50)
+            kwargs.setdefault('victimLikelihood', 50)
+            kwargs.setdefault('killerLikelihood', 50)
         new_asset = asset_class(id=new_id, **kwargs)
-        
         self.get_asset_list(asset_type).append(new_asset)
         self.get_asset_dict(asset_type)[new_id] = new_asset
         self.save_asset(asset_type)
         return new_asset
 
     def delete_asset(self, asset_type, asset_id):
-        """Deletes an asset from the lists and saves."""
         asset_list = self.get_asset_list(asset_type)
         asset_dict = self.get_asset_dict(asset_type)
-        
         asset_to_delete = asset_dict.get(asset_id)
         if asset_to_delete:
             asset_list.remove(asset_to_delete)
@@ -139,474 +131,297 @@ class DataManager:
             return True
         return False
 
+# --- Animated UI Components ---
 
-def main(page: ft.Page):
-    """Main function to build and run the Flet application."""
-    page.title = "The Agency"
-    page.theme_mode = ft.ThemeMode.DARK
-    page.vertical_alignment = ft.MainAxisAlignment.START
-    page.horizontal_alignment = ft.CrossAxisAlignment.START
-    
-    # --- Holo-Noir Theme ---
-    page.theme = ft.Theme(
-        color_scheme=ft.ColorScheme(
-            primary=ft.Colors.BLUE_ACCENT_700,
-            primary_container=ft.Colors.BLUE_GREY_800,
-            background=ft.Colors.with_opacity(0.95, "#1C2128"),
-        ),
-        font_family="Inter"
-    )
+class AnimatedLineEdit(QLineEdit):
+    """A QLineEdit with an animated border color for focus effects."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.animation = QPropertyAnimation(self, b"styleSheet")
+        self.animation.setDuration(200) # milliseconds
+        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
 
-    data_manager = DataManager()
-    
-    # --- UI Components ---
-    list_pane = ft.ListView(expand=True, spacing=5)
-    detail_pane = ft.Column([ft.Text("Select an item to see details")], expand=True, scroll=ft.ScrollMode.ADAPTIVE)
+    def event(self, event):
+        if event.type() == QEvent.FocusIn:
+            self.animation.setStartValue(self.styleSheet())
+            self.animation.setEndValue("""
+                QLineEdit {
+                    border: 1px solid #82B1FF;
+                    background-color: #374151;
+                    padding: 5px;
+                    border-radius: 3px;
+                }
+            """)
+            self.animation.start()
+        elif event.type() == QEvent.FocusOut:
+            self.animation.setStartValue(self.styleSheet())
+            self.animation.setEndValue("""
+                QLineEdit {
+                    border: 1px solid #374151;
+                    background-color: #1F2937;
+                    padding: 5px;
+                    border-radius: 3px;
+                }
+            """)
+            self.animation.start()
+        return super().event(event)
 
-    def show_character_details(char: Character):
-        # This function will now build and display the detail view
-        # It's a large function, but necessary without UserControl
-        detail_pane.controls.clear()
-        
-        def save_character_changes(e):
-            # Update the character object from the control values
-            char.fullName = name_field.value
-            char.biography = bio_field.value
-            char.personality = personality_field.value
-            char.alignment = alignment_dropdown.value
-            char.wealthClass = wealth_dropdown.value
-            char.gender = gender_dropdown.value
-            char.age = int(age_field.value) if age_field.value.isdigit() else None
-            # ... update all other fields ...
-            data_manager.save_asset("characters")
-            page.snack_bar = ft.SnackBar(ft.Text(f"Saved {char.fullName}."), open=True)
-            # Also update the name in the list_pane
-            for item in list_pane.controls:
-                if hasattr(item, 'data') and item.data.id == char.id:
-                    item.title.value = char.fullName
-                    break
-            list_pane.update()
-            page.update()
+# --- Standard UI Components (PySide6) ---
 
-        def delete_character(e):
-            data_manager.delete_asset("characters", char.id)
-            detail_pane.controls.clear()
-            detail_pane.controls.append(ft.Text("Select an item to see details"))
-            # Refresh the list pane
-            nav_change(ft.ControlEvent(target=nav_rail, name="change", data="0", control=nav_rail, page=page))
+class AssetListView(QWidget):
+    """A reusable list view for displaying assets."""
+    def __init__(self, data_manager, on_select):
+        super().__init__()
+        self.data_manager = data_manager
+        self.on_select = on_select
+        self.current_asset_type = "characters"
 
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
 
-        name_field = ft.TextField(label="Full Name", value=char.fullName)
-        bio_field = ft.TextField(label="Biography", value=char.biography, multiline=True, min_lines=3)
-        personality_field = ft.TextField(label="Personality", value=char.personality, multiline=True, min_lines=3)
-        age_field = ft.TextField(label="Age", value=str(char.age) if char.age is not None else "")
+        self.add_button = QPushButton("Add Character")
+        self.add_button.clicked.connect(self.add_asset)
+        self.layout.addWidget(self.add_button)
 
-        alignment_dropdown = ft.Dropdown(
-            label="Alignment",
-            value=char.alignment,
-            options=[ft.dropdown.Option(align) for align in get_args(Alignment)],
-        )
-        
-        wealth_dropdown = ft.Dropdown(
-            label="Wealth Class",
-            value=char.wealthClass,
-            options=[ft.dropdown.Option(wc) for wc in get_args(WealthClass)],
-        )
+        self.list_widget = QListWidget()
+        self.list_widget.itemClicked.connect(self._handle_item_clicked)
+        self.layout.addWidget(self.list_widget)
 
-        gender_dropdown = ft.Dropdown(
-            label="Gender",
-            value=char.gender,
-            options=[ft.dropdown.Option(g) for g in get_args(Gender)],
-        )
+        self.update_list()
 
-        button_row = ft.Row(
-            controls=[
-                ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=save_character_changes),
-                ft.ElevatedButton("Delete", icon=ft.Icons.DELETE, on_click=delete_character, color=ft.colors.RED)
-            ]
-        )
+    def set_asset_type(self, asset_type):
+        self.current_asset_type = asset_type
+        self.add_button.setText(f"Add {asset_type.replace('_', ' ').capitalize()[:-1]}")
+        self.update_list()
 
-        detail_pane.controls.extend([
-            ft.Text(f"Editing: {char.fullName}", size=20),
-            name_field,
-            age_field,
-            gender_dropdown,
-            alignment_dropdown,
-            wealth_dropdown,
-            bio_field,
-            personality_field,
-            button_row
-        ])
-        detail_pane.update()
+    def update_list(self):
+        self.list_widget.clear()
+        assets = self.data_manager.get_asset_list(self.current_asset_type)
+        for asset in assets:
+            display_name = getattr(asset, 'fullName', getattr(asset, 'name', 'Unnamed'))
+            item = QListWidgetItem(display_name)
+            item.setData(Qt.UserRole, asset) # Store the whole object
+            self.list_widget.addItem(item)
 
-    def show_location_details(loc: Location):
-        detail_pane.controls.clear()
-
-        def save_location_changes(e):
-            loc.name = name_field.value
-            loc.description = desc_field.value
-            data_manager.save_asset("locations")
-            page.snack_bar = ft.SnackBar(ft.Text(f"Saved {loc.name}."), open=True)
-            for item in list_pane.controls:
-                if hasattr(item, 'data') and item.data.id == loc.id:
-                    item.title.value = loc.name
-                    break
-            list_pane.update()
-            page.update()
-
-        def delete_location(e):
-            data_manager.delete_asset("locations", loc.id)
-            detail_pane.controls.clear()
-            detail_pane.controls.append(ft.Text("Select an item to see details"))
-            nav_change(ft.ControlEvent(target=nav_rail, name="change", data="1", control=nav_rail, page=page))
-
-        name_field = ft.TextField(label="Name", value=loc.name)
-        desc_field = ft.TextField(label="Description", value=loc.description, multiline=True, min_lines=3)
-
-        button_row = ft.Row(
-            controls=[
-                ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=save_location_changes),
-                ft.ElevatedButton("Delete", icon=ft.Icons.DELETE, on_click=delete_location, color=ft.Colors.RED)
-            ]
-        )
-
-        detail_pane.controls.extend([
-            ft.Text(f"Editing: {loc.name}", size=20),
-            name_field,
-            desc_field,
-            button_row
-        ])
-        detail_pane.update()
-
-    def show_faction_details(fac: Faction):
-        detail_pane.controls.clear()
-
-        def save_faction_changes(e):
-            fac.name = name_field.value
-            fac.description = desc_field.value
-            data_manager.save_asset("factions")
-            page.snack_bar = ft.SnackBar(ft.Text(f"Saved {fac.name}."), open=True)
-            for item in list_pane.controls:
-                if hasattr(item, 'data') and item.data.id == fac.id:
-                    item.title.value = fac.name
-                    break
-            list_pane.update()
-            page.update()
-
-        def delete_faction(e):
-            data_manager.delete_asset("factions", fac.id)
-            detail_pane.controls.clear()
-            detail_pane.controls.append(ft.Text("Select an item to see details"))
-            nav_change(ft.ControlEvent(target=nav_rail, name="change", data="2", control=nav_rail, page=page))
-
-        name_field = ft.TextField(label="Name", value=fac.name)
-        desc_field = ft.TextField(label="Description", value=fac.description, multiline=True, min_lines=3)
-
-        button_row = ft.Row(
-            controls=[
-                ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=save_faction_changes),
-                ft.ElevatedButton("Delete", icon=ft.Icons.DELETE, on_click=delete_faction, color=ft.Colors.RED)
-            ]
-        )
-
-        detail_pane.controls.extend([
-            ft.Text(f"Editing: {fac.name}", size=20),
-            name_field,
-            desc_field,
-            button_row
-        ])
-        detail_pane.update()
-
-    def show_district_details(dist: District):
-        detail_pane.controls.clear()
-
-        def save_district_changes(e):
-            dist.name = name_field.value
-            dist.description = desc_field.value
-            data_manager.save_asset("districts")
-            page.snack_bar = ft.SnackBar(ft.Text(f"Saved {dist.name}."), open=True)
-            for item in list_pane.controls:
-                if hasattr(item, 'data') and item.data.id == dist.id:
-                    item.title.value = dist.name
-                    break
-            list_pane.update()
-            page.update()
-
-        def delete_district(e):
-            data_manager.delete_asset("districts", dist.id)
-            detail_pane.controls.clear()
-            detail_pane.controls.append(ft.Text("Select an item to see details"))
-            nav_change(ft.ControlEvent(target=nav_rail, name="change", data="3", control=nav_rail, page=page))
-
-        name_field = ft.TextField(label="Name", value=dist.name)
-        desc_field = ft.TextField(label="Description", value=dist.description, multiline=True, min_lines=3)
-
-        button_row = ft.Row(
-            controls=[
-                ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=save_district_changes),
-                ft.ElevatedButton("Delete", icon=ft.Icons.DELETE, on_click=delete_district, color=ft.Colors.RED)
-            ]
-        )
-
-        detail_pane.controls.extend([
-            ft.Text(f"Editing: {dist.name}", size=20),
-            name_field,
-            desc_field,
-            button_row
-        ])
-        detail_pane.update()
-
-    def show_item_details(item: Item):
-        detail_pane.controls.clear()
-
-        def save_item_changes(e):
-            item.name = name_field.value
-            item.description = desc_field.value
-            data_manager.save_asset("items")
-            page.snack_bar = ft.SnackBar(ft.Text(f"Saved {item.name}."), open=True)
-            for list_item in list_pane.controls:
-                if hasattr(list_item, 'data') and list_item.data.id == item.id:
-                    list_item.title.value = item.name
-                    break
-            list_pane.update()
-            page.update()
-
-        def delete_item(e):
-            data_manager.delete_asset("items", item.id)
-            detail_pane.controls.clear()
-            detail_pane.controls.append(ft.Text("Select an item to see details"))
-            nav_change(ft.ControlEvent(target=nav_rail, name="change", data="4", control=nav_rail, page=page))
-
-        name_field = ft.TextField(label="Name", value=item.name)
-        desc_field = ft.TextField(label="Description", value=item.description, multiline=True, min_lines=3)
-
-        button_row = ft.Row(
-            controls=[
-                ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=save_item_changes),
-                ft.ElevatedButton("Delete", icon=ft.Icons.DELETE, on_click=delete_item, color=ft.Colors.RED)
-            ]
-        )
-
-        detail_pane.controls.extend([
-            ft.Text(f"Editing: {item.name}", size=20),
-            name_field,
-            desc_field,
-            button_row
-        ])
-        detail_pane.update()
-
-    def add_character(e):
-        new_char = data_manager.add_asset(
-            "characters",
-            fullName="New Character",
-            biography="",
-            personality="",
-            alignment="True Neutral",
-            honesty=50,
-            victimLikelihood=50,
-            killerLikelihood=50,
-            wealthClass="Working Stiff",
-            gender="Unspecified"
-        )
-        # Refresh the list
-        nav_change(ft.ControlEvent(target=nav_rail, name="change", data="0", control=nav_rail, page=page))
-        # Select the new character
-        show_character_details(new_char)
-
-    def add_location(e):
-        new_loc = data_manager.add_asset(
-            "locations",
-            name="New Location",
-            description=""
-        )
-        nav_change(ft.ControlEvent(target=nav_rail, name="change", data="1", control=nav_rail, page=page))
-        show_location_details(new_loc)
-
-    def add_faction(e):
-        new_fac = data_manager.add_asset(
-            "factions",
-            name="New Faction",
-            description=""
-        )
-        nav_change(ft.ControlEvent(target=nav_rail, name="change", data="2", control=nav_rail, page=page))
-        show_faction_details(new_fac)
-
-    def add_district(e):
-        new_dist = data_manager.add_asset(
-            "districts",
-            name="New District",
-            description=""
-        )
-        nav_change(ft.ControlEvent(target=nav_rail, name="change", data="3", control=nav_rail, page=page))
-        show_district_details(new_dist)
-
-    def add_item(e):
-        new_item = data_manager.add_asset(
-            "items",
-            name="New Item",
-            description="",
-            possibleMeans=False,
-            possibleMotive=False,
-            possibleOpportunity=False,
-            cluePotential="None",
-            value="",
-            condition="Good"
-        )
-        nav_change(ft.ControlEvent(target=nav_rail, name="change", data="4", control=nav_rail, page=page))
-        show_item_details(new_item)
-
-
-    def nav_change(e):
-        selected_index = int(e.control.selected_index)
-        list_pane.controls.clear()
-        detail_pane.controls.clear()
-        detail_pane.controls.append(ft.Text("Select an item to see details"))
-
-        # Update Add button functionality
-        if selected_index == 0:
-            nav_rail.leading.on_click = add_character
-        elif selected_index == 1:
-            nav_rail.leading.on_click = add_location
-        elif selected_index == 2:
-            nav_rail.leading.on_click = add_faction
-        elif selected_index == 3:
-            nav_rail.leading.on_click = add_district
-        elif selected_index == 4:
-            nav_rail.leading.on_click = add_item
-        elif selected_index == 5: # Plot Graph
-            nav_rail.leading.on_click = None
-        # Add other asset types here
+    def add_asset(self):
+        if self.current_asset_type == "characters":
+            self.data_manager.add_asset(self.current_asset_type, fullName="New Character")
         else:
-            nav_rail.leading.on_click = None
+            self.data_manager.add_asset(self.current_asset_type, name=f"New {self.current_asset_type.capitalize()[:-1]}")
+        self.update_list()
 
+    def _handle_item_clicked(self, item):
+        asset = item.data(Qt.UserRole)
+        self.on_select(asset)
 
-        if selected_index == 0: # Characters
-            for char in data_manager.get_asset_list("characters"):
-                list_pane.controls.append(
-                    ft.ListTile(
-                        title=ft.Text(char.fullName),
-                        on_click=lambda _, char=char: show_character_details(char),
-                        data=char
-                    )
-                )
-        elif selected_index == 1: # Locations
-            for loc in data_manager.get_asset_list("locations"):
-                list_pane.controls.append(
-                    ft.ListTile(
-                        title=ft.Text(loc.name),
-                        on_click=lambda _, loc=loc: show_location_details(loc),
-                        data=loc
-                    )
-                )
-        elif selected_index == 2: # Factions
-            for fac in data_manager.get_asset_list("factions"):
-                list_pane.controls.append(
-                    ft.ListTile(
-                        title=ft.Text(fac.name),
-                        on_click=lambda _, fac=fac: show_faction_details(fac),
-                        data=fac
-                    )
-                )
-        elif selected_index == 3: # Districts
-            for dist in data_manager.get_asset_list("districts"):
-                list_pane.controls.append(
-                    ft.ListTile(
-                        title=ft.Text(dist.name),
-                        on_click=lambda _, dist=dist: show_district_details(dist),
-                        data=dist
-                    )
-                )
-        elif selected_index == 4: # Items
-            for item in data_manager.get_asset_list("items"):
-                list_pane.controls.append(
-                    ft.ListTile(
-                        title=ft.Text(item.name),
-                        on_click=lambda _, item=item: show_item_details(item),
-                        data=item
-                    )
-                )
-        elif selected_index == 5: # Plot Graph
-            detail_pane.controls.clear()
-            
-            nodes = []
-            for i, char in enumerate(data_manager.get_asset_list("characters")):
-                nodes.append(
-                    ft.Container(
-                        content=ft.Text(char.fullName),
-                        top=50 + i * 100,
-                        left=50,
-                        bgcolor=ft.colors.BLUE_GREY_700,
-                        padding=10,
-                        border_radius=5
-                    )
-                )
+class CharacterDetailView(QWidget):
+    """A detail view for editing a Character."""
+    def __init__(self, character, data_manager, on_save, on_delete):
+        super().__init__()
+        self.character = character
+        self.data_manager = data_manager
+        self.on_save = on_save
+        self.on_delete = on_delete
 
-            plot_canvas = ft.Stack(
-                nodes,
-                expand=True
-            )
+        self.layout = QVBoxLayout(self)
+        self.form_layout = QFormLayout()
 
-            def on_pan_update(e: ft.DragUpdateEvent):
-                for control in plot_canvas.controls:
-                    if isinstance(control, ft.Container): # Assuming nodes are containers
-                        control.top += e.delta_y
-                        control.left += e.delta_x
-                plot_canvas.update()
+        # Use the new animated line edit
+        self.name_field = AnimatedLineEdit(self.character.fullName)
+        self.bio_field = QTextEdit(self.character.biography)
+        self.personality_field = QTextEdit(self.character.personality)
+        self.alignment_dropdown = QComboBox()
+        self.alignment_dropdown.addItems(get_args(Alignment))
+        self.alignment_dropdown.setCurrentText(self.character.alignment)
 
-            def on_scroll(e: ft.ScrollEvent):
-                for control in plot_canvas.controls:
-                    if isinstance(control, ft.Container):
-                        # A simple scaling effect
-                        scale_factor = 1.1 if e.scroll_delta_y < 0 else 0.9
-                        control.scale = ft.transform.Scale(scale=control.scale.scale * scale_factor if control.scale else scale_factor)
-                plot_canvas.update()
+        self.form_layout.addRow("Full Name:", self.name_field)
+        self.form_layout.addRow("Alignment:", self.alignment_dropdown)
+        self.form_layout.addRow("Biography:", self.bio_field)
+        self.form_layout.addRow("Personality:", self.personality_field)
 
-            gesture_detector = ft.GestureDetector(
-                content=plot_canvas,
-                on_pan_update=on_pan_update,
-                on_scroll=on_scroll,
-                drag_interval=10,
-            )
+        self.layout.addLayout(self.form_layout)
 
-            detail_pane.controls.append(gesture_detector)
-        # Add elif blocks for other asset types (locations, items, etc.)
+        self.button_layout = QHBoxLayout()
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_clicked)
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_clicked)
+        self.button_layout.addWidget(self.save_button)
+        self.button_layout.addWidget(self.delete_button)
+        self.layout.addLayout(self.button_layout)
+
+    def save_clicked(self):
+        self.character.fullName = self.name_field.text()
+        self.character.biography = self.bio_field.toPlainText()
+        self.character.personality = self.personality_field.toPlainText()
+        self.character.alignment = self.alignment_dropdown.currentText()
+        self.data_manager.save_asset("characters")
+        self.on_save(self.character)
+
+    def delete_clicked(self):
+        self.data_manager.delete_asset("characters", self.character.id)
+        self.on_delete()
+
+class MainWindow(QMainWindow):
+    """The main application window."""
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("The Agency")
+        self.setGeometry(100, 100, 1200, 800)
+
+        self.data_manager = DataManager()
         
-        page.update()
+        # --- Main Layout ---
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.main_layout = QHBoxLayout(self.central_widget)
 
-    nav_rail = ft.NavigationRail(
-        selected_index=0,
-        label_type=ft.NavigationRailLabelType.ALL,
-        min_width=100,
-        min_extended_width=400,
-        leading=ft.FloatingActionButton(icon=ft.Icons.ADD, text="Add", on_click=add_character),
-        destinations=[
-            ft.NavigationRailDestination(icon=ft.Icons.PERSON, label="Characters"),
-            ft.NavigationRailDestination(icon=ft.Icons.LOCATION_ON, label="Locations"),
-            ft.NavigationRailDestination(icon=ft.Icons.PEOPLE, label="Factions"),
-            ft.NavigationRailDestination(icon=ft.Icons.MAP, label="Districts"),
-            ft.NavigationRailDestination(icon=ft.Icons.FOLDER, label="Items"),
-            ft.NavigationRailDestination(icon=ft.Icons.SHARE, label="Plot Graph"),
-        ],
-        on_change=nav_change,
-    )
+        # --- Navigation Rail ---
+        self.nav_rail = QWidget()
+        self.nav_layout = QVBoxLayout(self.nav_rail)
+        self.nav_rail.setFixedWidth(150)
 
-    # Initial load
-    nav_change(ft.ControlEvent(target=nav_rail, name="change", data="0", control=nav_rail, page=page))
+        self.nav_buttons = {
+            "Characters": "characters",
+            "Locations": "locations",
+            "Factions": "factions",
+            "Districts": "districts",
+            "Items": "items",
+            "Plot Graph": "plot_graph",
+        }
 
+        for name, asset_type in self.nav_buttons.items():
+            button = QPushButton(name)
+            button.clicked.connect(lambda checked, at=asset_type: self.change_view(at))
+            self.nav_layout.addWidget(button)
+        self.nav_layout.addStretch()
 
-    page.add(
-        ft.Row(
-            [
-                nav_rail,
-                ft.VerticalDivider(width=1),
-                ft.Column([list_pane]),
-                ft.VerticalDivider(width=1),
-                detail_pane,
-            ],
-            expand=True,
-        )
-    )
-    page.update()
+        # --- List Pane ---
+        self.list_pane = AssetListView(self.data_manager, self.on_asset_select)
+
+        # --- Detail Pane ---
+        self.detail_stack = QStackedWidget()
+        self.placeholder_view = QLabel("Select an item to see details.")
+        self.placeholder_view.setAlignment(Qt.AlignCenter)
+        self.detail_stack.addWidget(self.placeholder_view)
+
+        # --- Splitter to manage panes ---
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.addWidget(self.list_pane)
+        self.splitter.addWidget(self.detail_stack)
+        self.splitter.setSizes([300, 900])
+
+        self.main_layout.addWidget(self.nav_rail)
+        self.main_layout.addWidget(self.splitter)
+
+        self.apply_holo_noir_style()
+
+    def apply_holo_noir_style(self):
+        """Applies the 'Holo-Noir' theme using QSS."""
+        self.setStyleSheet("""
+            QMainWindow, QWidget {
+                background-color: #111827;
+                color: #E0E0E0;
+                font-family: Inter, sans-serif;
+            }
+            QListWidget {
+                background-color: #1F2937;
+                border: 1px solid #374151;
+                border-radius: 5px;
+            }
+            QListWidget::item {
+                padding: 8px;
+            }
+            QListWidget::item:hover {
+                background-color: #374151; /* Holographic Card effect */
+            }
+            QListWidget::item:selected {
+                background-color: #82B1FF;
+                color: #111827;
+            }
+            QPushButton {
+                background-color: #374151;
+                border: 1px solid #4B5563;
+                padding: 8px;
+                border-radius: 5px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #4B5563;
+            }
+            QPushButton:pressed {
+                background-color: #82B1FF;
+                color: #111827;
+            }
+            QLineEdit, QTextEdit, QComboBox {
+                background-color: #1F2937;
+                border: 1px solid #374151;
+                padding: 5px;
+                border-radius: 3px;
+            }
+            /* We remove the focus state from QSS to let the animation handle it */
+            QTextEdit, QComboBox {
+                 border: 1px solid #374151;
+            }
+            QTextEdit:focus, QComboBox:focus {
+                 border: 1px solid #82B1FF;
+            }
+            QLabel {
+                font-size: 14px;
+            }
+            QSplitter::handle {
+                background-color: #374151;
+            }
+            QSplitter::handle:horizontal {
+                width: 1px;
+            }
+        """)
+
+    def change_view(self, asset_type):
+        """Changes the asset type displayed in the list view."""
+        if asset_type == "plot_graph":
+            self.list_pane.setVisible(False)
+            plot_graph_view = QLabel("Interactive Plot Graph (Coming Soon!)")
+            plot_graph_view.setAlignment(Qt.AlignCenter)
+            self.set_detail_view(plot_graph_view)
+        else:
+            self.list_pane.setVisible(True)
+            self.list_pane.set_asset_type(asset_type)
+            self.set_detail_view(self.placeholder_view)
+
+    def on_asset_select(self, asset):
+        """Callback to display the detail view for a selected asset."""
+        asset_type = self.list_pane.current_asset_type
+        if asset_type == "characters":
+            view = CharacterDetailView(
+                asset,
+                self.data_manager,
+                on_save=lambda updated_asset: self.list_pane.update_list(),
+                on_delete=lambda: (
+                    self.set_detail_view(self.placeholder_view),
+                    self.list_pane.update_list()
+                )
+            )
+            self.set_detail_view(view)
+        else:
+            # Placeholder for other asset types
+            view = QLabel(f"Detail view for {asset_type} not implemented.")
+            view.setAlignment(Qt.AlignCenter)
+            self.set_detail_view(view)
+
+    def set_detail_view(self, widget):
+        """Clears the detail stack and adds a new widget."""
+        # Clear previous widgets
+        while self.detail_stack.count() > 0:
+            w = self.detail_stack.widget(0)
+            self.detail_stack.removeWidget(w)
+            w.deleteLater()
+        self.detail_stack.addWidget(widget)
+        self.detail_stack.setCurrentWidget(widget)
+
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())

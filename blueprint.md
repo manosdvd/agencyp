@@ -21,15 +21,9 @@ The user experience is central to this project. The goal is to create an interfa
   * **Core Theme:** "Holo-Noir." A fusion of classic detective noir (dark backgrounds, high-contrast text) with the sleek, functional glow of science fiction interfaces (think *Minority Report*, *Blade Runner*).  
   * **Color Palette:** A base of deep navy blues and charcoals. Primary UI elements will be a crisp, legible white. Interactive elements, highlights, and data connections will use a vibrant, electric blue that "glows" against the dark background. Validation errors will be a sharp, cautionary red.  
   * **Typography:** Clean, sans-serif fonts (like Inter) for maximum readability.  
-  * **Feel:** Tactile, responsive, and precise. Interactions should feel deliberate and impactful.  
-* **Animations & Effects (Focus on Attention):**  
-  * **Active Field Focus:** When a text field or UI element is selected, its border will pulse with a soft, electric blue glow, drawing the user's eye and confirming the active area.  
-  * **Data Flow Visualization:** On the Plot Graph, connecting two nodes will not just draw a line, but will show an animated pulse of light traveling between them, representing the flow of information or logic.  
-  * **"Holographic" Cards:** When hovering over an asset in a list (e.g., a character), the item will subtly lift and gain a soft background glow, as if it were a semi-transparent, holographic card.  
-  * **State Transitions:** All transitions (changing tabs, opening/closing panels) will be smooth and fluid, using subtle fades and slides instead of jarring jumps. This maintains a sense of place and focus for the user.  
-  * **Material Influence:** We will use Google Material Design's principles for structure: clear hierarchy, predictable component behavior, and responsive layouts. However, the aesthetic layer (colors, animations, feel) will be entirely our own "Holo-Noir."  
+  * **Styling Engine:** The "Holo-Noir" aesthetic will be implemented using **Qt Style Sheets (QSS)**, a powerful theming engine with CSS-like syntax that provides granular control over the appearance of all UI components.  
 * **Layout & Organization (Minimizing Cognitive Load):**  
-  * **Three-Pane Layout:** The standard layout will consist of a narrow **Navigation Rail** (left, with icons), a **List Pane** (showing assets in the selected category), and a **Detail Pane** (the main content area). This is a proven, intuitive pattern.  
+  * **Three-Pane Layout:** The standard layout will consist of a narrow **Navigation Rail** (left), a **List Pane** (showing assets in the selected category), and a **Detail Pane** (the main content area), managed by a QSplitter for resizable comfort. This is a proven, intuitive pattern.  
   * **Progressive Disclosure:** Details are hidden until needed. A user sees a list of characters. They click one, and *then* see the full details. This prevents overwhelming the user with information.  
   * **Context-Aware UI:** The options and actions presented will be relevant to the current task. For example, in the Character detail view, a dropdown for "Allies" will be searchable and will show other characters, not locations or items.
 
@@ -52,17 +46,15 @@ The application must feel instantaneous. The architecture is designed to support
 These are the primary interfaces where the author will spend their time. They must be powerful, intuitive, and align with our "Holo-Noir" design philosophy.
 
 * **The Interactive Plot Graph (The Evidence Board):**  
-  * **Concept:** This is the author's main workspace for structuring the case. It's a zoomable, pannable canvas where every piece of case data (clues, characters, locations, items) can be placed as a node.  
+  * **Concept:** This is the author's main workspace for structuring the case. It will be built using **PySide6's Graphics View Framework**, a highly capable system for creating zoomable, pannable canvases with interactive items. Every piece of case data (clues, characters, locations, items) can be placed as a node.  
   * **Functionality:**  
     * Authors can visually link nodes to define the logical flow of the investigation.  
-    * Connections are not static lines but **"glowing threads of logic,"** with animated pulses indicating direction.  
+    * Connections are not static lines but **"glowing threads of logic."**  
     * **Live Validation Feedback:** If the Validator detects an issue (e.g., a clue that doesn't lead anywhere), the corresponding node or thread on the graph will **flicker with a red glow**, providing immediate, visual feedback in the exact location of the problem.  
 * **The Gamified Timeline Editor (Chronological Reconstruction):**  
   * **Concept:** Authoring the ground-truth timeline of events should feel like a puzzle. The UI will guide the author backward from the crime.  
   * **Functionality:**  
     * The editor will present a clear, linear track.  
-    * Adding an event will be a satisfying interaction, with the new event card "snapping" into place with a subtle animation and sound effect.  
-    * Dragging events to re-order them will be fluid, with other events automatically making space.  
     * Chronological or causal impossibilities (e.g., a character being in two places at once) will be flagged in real-time directly on the timeline, highlighting the conflicting events in red.
 
 ## **5\. The Validator: The Logical Co-Pilot**
@@ -74,7 +66,7 @@ The Validator is the application's brain. It's an ever-present assistant that en
 
 ## **6\. Development Methodology**
 
-* **Start Fresh:** The existing main.py will be archived. Development will begin on a new main.py file, built from the ground up according to this refactored blueprint.  
+* **UI Framework:** The project uses **PySide6 (the official Python bindings for Qt)**. This framework was chosen for its stability, maturity, extensive widget library, and powerful QSS styling engine, which is essential for realizing the "Holo-Noir" aesthetic.  
 * **Schema-First:** The schemas.py file will be the first point of implementation, ensuring the data structures are solid before any UI is built.  
-* **Component-Based UI:** The Flet UI will be built using reusable custom components (UserControl) to keep the code clean, maintainable, and scalable. For example, CharacterDetailView, AssetListView, etc.  
+* **Component-Based UI:** The PySide6 UI will be built using reusable custom QWidget classes to keep the code clean, maintainable, and scalable. For example, CharacterDetailView, AssetListView, etc.  
 * **Iterative Implementation:** We will build and test one feature at a time, starting with the core data management and character editor, ensuring each piece is perfect before moving to the next.
