@@ -4,7 +4,7 @@
         "fullName": "Cera Mulligan",
         "biography": "",
         "personality": "",
-        "alignment": "Lawful Good",
+        "alignment": "Chaotic Good",
         "honesty": 50,
         "victimLikelihood": 50,
         "killerLikelihood": 50,
@@ -14,7 +14,7 @@
         "employment": "",
         "image": "./data/images/d2af4469-b74c-43cd-9bb4-156455f11e73.png",
         "faction": "",
-        "wealthClass": "Old Money Rich",
+        "wealthClass": "Working Stiff",
         "district": "",
         "motivations": [
             ""
