@@ -1,6 +1,6 @@
 # main.py
 # The Agency: A Detective Story Authoring Tool
-# Fusing Holo-Noir aesthetic with Material Design 3 principles.
+# Fusing Holo-Noir aesthetic with Material Design 3 principles and animations.
 
 import sys
 import logging
@@ -15,10 +15,14 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QLabel, QLineEdit,
     QTextEdit, QComboBox, QFrame, QSplitter, QStackedWidget, QFormLayout,
-    QGraphicsOpacityEffect, QFileDialog, QInputDialog
+    QGraphicsOpacityEffect, QFileDialog, QInputDialog, QStyledItemDelegate,
+    QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import QIcon, QFont, QColor, QPalette, QPixmap, QPainter, QBrush, QRadialGradient
-from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent, Property, Signal, QTimer, QPoint
+from PySide6.QtCore import (
+    Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent, Property, Signal, 
+    QTimer, QPoint, QParallelAnimationGroup
+)
 
 # --- Schema Imports ---
 import schemas
@@ -132,10 +136,9 @@ class DataManager:
             case_obj.locations.append(new_loc)
         self.save_case(case_obj)
 
-# --- Material UI Components ---
+# --- Animated UI Components ---
 
 class MaterialButton(QPushButton):
-    """A QPushButton with a Material Design ripple effect."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ripple_radius = 0
@@ -145,7 +148,6 @@ class MaterialButton(QPushButton):
         self.animation.setEasingCurve(QEasingCurve.OutCubic)
 
     def mousePressEvent(self, event):
-        # Use the modern event.position() to avoid deprecation warnings
         self.ripple_pos = event.position().toPoint()
         self.animation.setStartValue(0)
         self.animation.setEndValue(self.width() * 1.5)
@@ -158,12 +160,8 @@ class MaterialButton(QPushButton):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
             painter.setPen(Qt.NoPen)
-            
             end_val = self.animation.endValue()
-            opacity = 0.0
-            if end_val > 0:
-                opacity = 1.0 - (self._ripple_radius / end_val)
-            
+            opacity = 1.0 - (self._ripple_radius / end_val) if end_val > 0 else 0.0
             painter.setBrush(QColor(255, 255, 255, int(opacity * 60)))
             painter.drawEllipse(self.ripple_pos, self._ripple_radius, self._ripple_radius)
 
@@ -175,6 +173,61 @@ class MaterialButton(QPushButton):
     def ripple_radius(self, value):
         self._ripple_radius = value
         self.update()
+
+class AnimatedStackedWidget(QStackedWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.m_direction = Qt.Horizontal
+        self.m_speed = 500
+        self.m_animation_type = QEasingCurve.OutCubic
+        self.m_now = 0
+        self.m_next = 0
+        self.m_wrap = False
+        self.m_pnow = QPoint(0, 0)
+        self.m_active = False
+
+    def slideInNext(self):
+        now_widget = self.widget(self.m_now)
+        next_widget = self.widget(self.m_next)
+        
+        anim_group = QParallelAnimationGroup(self)
+
+        # Animate current widget out
+        pos_anim_now = QPropertyAnimation(now_widget, b"pos")
+        pos_anim_now.setDuration(self.m_speed)
+        pos_anim_now.setEasingCurve(self.m_animation_type)
+        pos_anim_now.setStartValue(QPoint(0,0))
+        pos_anim_now.setEndValue(QPoint(-self.width(), 0))
+        anim_group.addAnimation(pos_anim_now)
+
+        # Animate next widget in
+        next_widget.move(self.width(), 0)
+        next_widget.show()
+        next_widget.raise_()
+        
+        pos_anim_next = QPropertyAnimation(next_widget, b"pos")
+        pos_anim_next.setDuration(self.m_speed)
+        pos_anim_next.setEasingCurve(self.m_animation_type)
+        pos_anim_next.setStartValue(QPoint(self.width(), 0))
+        pos_anim_next.setEndValue(QPoint(0, 0))
+        anim_group.addAnimation(pos_anim_next)
+
+        anim_group.finished.connect(self.animationDone)
+        self.m_active = True
+        anim_group.start(QPropertyAnimation.DeleteWhenStopped)
+
+    def setCurrentWidget(self, widget):
+        if self.m_active: return
+        self.m_now = self.currentIndex()
+        self.m_next = self.indexOf(widget)
+        if self.m_now == self.m_next: return
+        self.slideInNext()
+
+    def animationDone(self):
+        self.setCurrentIndex(self.m_next)
+        self.widget(self.m_now).hide()
+        self.widget(self.m_now).move(self.m_pnow)
+        self.m_active = False
 
 class WelcomeWidget(QWidget):
     create_new_case = Signal()
@@ -243,7 +296,6 @@ class CaseListView(QWidget):
         self.case_selected.emit(item.data(Qt.UserRole))
 
 class DetailView(QFrame):
-    """Base class for detail editor views with card styling."""
     def __init__(self):
         super().__init__()
         self.setObjectName("detailCard")
@@ -306,16 +358,12 @@ class CaseDetailView(QWidget):
         self.case = case_obj
         self.data_manager = data_manager
         self.current_asset_type = "characters"
-
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0,0,0,0)
-        
         self.splitter = QSplitter(Qt.Horizontal)
-        
         self.left_pane = QFrame()
         self.left_pane.setObjectName("leftPane")
         self.left_layout = QVBoxLayout(self.left_pane)
-        
         self.top_bar = QHBoxLayout()
         self.back_button = MaterialButton("< Back")
         self.back_button.clicked.connect(self.back_to_menu.emit)
@@ -325,7 +373,6 @@ class CaseDetailView(QWidget):
         self.top_bar.addWidget(self.case_title_label)
         self.top_bar.addStretch()
         self.left_layout.addLayout(self.top_bar)
-
         self.asset_nav_bar = QHBoxLayout()
         self.asset_buttons = { "Characters": "characters", "Locations": "locations", "Clues": "clues" }
         for name, key in self.asset_buttons.items():
@@ -334,27 +381,22 @@ class CaseDetailView(QWidget):
             button.clicked.connect(lambda checked, at=key: self.set_asset_view(at))
             self.asset_nav_bar.addWidget(button)
         self.left_layout.addLayout(self.asset_nav_bar)
-        
         self.add_asset_button = MaterialButton("+ Add Character")
         self.add_asset_button.setObjectName("addButton")
         self.add_asset_button.clicked.connect(self.add_new_asset)
         self.left_layout.addWidget(self.add_asset_button)
-
         self.asset_list_widget = QListWidget()
         self.asset_list_widget.itemClicked.connect(self.on_asset_selected)
         self.left_layout.addWidget(self.asset_list_widget)
-
-        self.detail_stack = QStackedWidget()
+        self.detail_stack = AnimatedStackedWidget() # Use animated stack
         self.placeholder_view = QLabel("Select an asset to edit")
         self.placeholder_view.setAlignment(Qt.AlignCenter)
         self.placeholder_view.setObjectName("placeholderLabel")
         self.detail_stack.addWidget(self.placeholder_view)
-
         self.splitter.addWidget(self.left_pane)
         self.splitter.addWidget(self.detail_stack)
         self.splitter.setSizes([400, 800])
         self.main_layout.addWidget(self.splitter)
-        
         self.asset_nav_bar.itemAt(0).widget().setChecked(True)
         self.set_asset_view("characters")
 
@@ -370,7 +412,7 @@ class CaseDetailView(QWidget):
     def populate_asset_list(self):
         self.asset_list_widget.clear()
         assets = getattr(self.case, self.current_asset_type, [])
-        for asset in assets:
+        for i, asset in enumerate(assets):
             name, id_val = "", ""
             if self.current_asset_type == "characters": name, id_val = asset.coreIdentity.fullName, asset.characterId
             elif self.current_asset_type == "locations": name, id_val = asset.coreDetails.name, asset.locationId
@@ -390,10 +432,9 @@ class CaseDetailView(QWidget):
         id_field = f"{self.current_asset_type[:-1]}Id"
         asset = next((a for a in assets if getattr(a, id_field) == asset_id), None)
         if asset:
-            if self.detail_stack.count() > 1:
-                old = self.detail_stack.widget(1)
-                self.detail_stack.removeWidget(old)
-                old.deleteLater()
+            if self.detail_stack.widget(1):
+                self.detail_stack.removeWidget(self.detail_stack.widget(1))
+
             editor = None
             if self.current_asset_type == "characters": editor = CharacterDetailView(asset, self.on_asset_save)
             elif self.current_asset_type == "locations": editor = LocationDetailView(asset, self.on_asset_save)
@@ -407,7 +448,6 @@ class CaseDetailView(QWidget):
         self.case_updated.emit()
 
 class NoiseOverlay(QWidget):
-    """A semi-transparent overlay with a noise/scan-line effect."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -425,7 +465,6 @@ class NoiseOverlay(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
         painter.drawTiledPixmap(self.rect(), self.noise_pixmap)
 
 class MainWindow(QMainWindow):
