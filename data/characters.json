@@ -8,43 +8,12 @@
         "honesty": 50,
         "victimLikelihood": 50,
         "killerLikelihood": 50,
-        "alias": "",
-        "age": 25,
+        "portrait_path": "C:/agencyp/Mischievous Smile and Blue Eyes.png",
         "gender": "Female",
-        "employment": "",
-        "image": "./data/images/d2af4469-b74c-43cd-9bb4-156455f11e73.png",
-        "faction": "",
-        "wealthClass": "Working Stiff",
-        "district": "",
-        "motivations": [
-            ""
-        ],
-        "secrets": [
-            ""
-        ],
-        "allies": [],
-        "enemies": [],
-        "items": [],
-        "archetype": "",
-        "values": [],
-        "flawsHandicapsLimitations": [
-            ""
-        ],
-        "quirks": [
-            ""
-        ],
-        "characteristics": [
-            ""
-        ],
-        "vulnerabilities": [
-            ""
-        ],
-        "voiceModel": "",
-        "dialogueStyle": "",
-        "expertise": [
-            ""
-        ],
-        "portrayalNotes": ""
+        "wealth": null,
+        "aliases": [],
+        "factionId": null,
+        "homeLocationId": null
     },
     {
         "id": "7872605f-7cd3-411e-8018-2c460923ffac",
@@ -55,29 +24,12 @@
         "honesty": 50,
         "victimLikelihood": 50,
         "killerLikelihood": 50,
-        "alias": null,
-        "age": null,
+        "portrait_path": null,
         "gender": null,
-        "employment": null,
-        "image": null,
-        "faction": null,
-        "wealthClass": null,
-        "district": null,
-        "motivations": [],
-        "secrets": [],
-        "allies": [],
-        "enemies": [],
-        "items": [],
-        "archetype": null,
-        "values": [],
-        "flawsHandicapsLimitations": [],
-        "quirks": [],
-        "characteristics": [],
-        "vulnerabilities": [],
-        "voiceModel": null,
-        "dialogueStyle": null,
-        "expertise": [],
-        "portrayalNotes": null
+        "wealth": null,
+        "aliases": [],
+        "factionId": null,
+        "homeLocationId": null
     },
     {
         "id": "bc9a32f6-05ef-47bc-98bf-522c11420b10",
@@ -88,28 +40,11 @@
         "honesty": 50,
         "victimLikelihood": 50,
         "killerLikelihood": 50,
-        "alias": null,
-        "age": null,
+        "portrait_path": null,
         "gender": null,
-        "employment": null,
-        "image": null,
-        "faction": null,
-        "wealthClass": null,
-        "district": null,
-        "motivations": [],
-        "secrets": [],
-        "allies": [],
-        "enemies": [],
-        "items": [],
-        "archetype": null,
-        "values": [],
-        "flawsHandicapsLimitations": [],
-        "quirks": [],
-        "characteristics": [],
-        "vulnerabilities": [],
-        "voiceModel": null,
-        "dialogueStyle": null,
-        "expertise": [],
-        "portrayalNotes": null
+        "wealth": null,
+        "aliases": [],
+        "factionId": null,
+        "homeLocationId": null
     }
 ]

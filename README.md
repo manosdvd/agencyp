@@ -77,15 +77,15 @@ python3 main.py
 ## Development Notes
 
 *   **Virtual Environment:** All development and execution *must* be done within the project's `venv`. Activate it with `source venv/bin/activate`.
-*   **Flet UI Framework:**
-    *   **Icon Naming:** Flet's `ft.icons` requires icon names to be in all capital letters (e.g., `ft.icons.ADD` not `ft.icons.add`).
-    *   **Event Handler Functions:** Functions assigned to `on_click` or other events must be defined before the UI component that uses them is instantiated.
-    *   **State Management:** UI updates require explicitly calling `page.update()`. For complex, nested controls, it's often necessary to pass the `page` object down to child controls or use a more robust state management pattern.
+*   **PySide6 UI Framework:**
+    *   **Styling:** PySide6 uses Qt Style Sheets (QSS) for styling, similar to CSS.
+    *   **Event Handling:** Signals and slots are used for event handling.
+    *   **Layouts:** Widgets are arranged using layout managers (e.g., `QVBoxLayout`, `QHBoxLayout`, `QFormLayout`).
 
 ## Technology Stack
 
 *   **Python:** The core programming language.
-*   **Flet:** The UI framework for building the desktop application.
+*   **PySide6:** The UI framework for building the desktop application.
 *   **Pydantic:** Used for data validation and schema definition.
 
 ## Roadmap

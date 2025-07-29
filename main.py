@@ -1,29 +1,27 @@
 # main.py
 # The Agency: A Detective Story Authoring Tool
-# Refactored to PySide6 with "Holo-Noir" animations and effects.
+# Fusing Holo-Noir aesthetic with Material Design 3 principles.
 
 import sys
 import logging
 import uuid
 import json
 import os
-from dataclasses import asdict
-from typing import get_args
+import shutil
+from dataclasses import asdict, is_dataclass, fields
+from typing import get_args, List, Dict, Any
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QLabel, QLineEdit,
     QTextEdit, QComboBox, QFrame, QSplitter, QStackedWidget, QFormLayout,
-    QGraphicsOpacityEffect
+    QGraphicsOpacityEffect, QFileDialog, QInputDialog
 )
-from PySide6.QtGui import QIcon, QFont, QColor, QPalette
-from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent, Property
+from PySide6.QtGui import QIcon, QFont, QColor, QPalette, QPixmap, QPainter, QBrush, QRadialGradient
+from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent, Property, Signal, QTimer, QPoint
 
 # --- Schema Imports ---
-from schemas import (
-    Character, Alignment, Gender, WealthClass, Location, District, Faction,
-    ValidationResult, CaseMeta, Item, TimelineEvent, Clue
-)
+import schemas
 
 # --- Logging Configuration ---
 logging.basicConfig(
@@ -34,408 +32,500 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Data Management (UNMODIFIED) ---
+# --- Enhanced JSON Encoder for Dataclasses ---
+class DataclassJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if is_dataclass(o):
+            return asdict(o)
+        return super().default(o)
+
+# --- Data Reconstruction Helper ---
+def from_dict_to_dataclass(cls, data):
+    if not isinstance(data, dict): return data
+    field_types = {f.name: f.type for f in fields(cls)}
+    kwargs = {}
+    for f_name, f_type in field_types.items():
+        if f_name in data:
+            val = data[f_name]
+            origin = getattr(f_type, '__origin__', None)
+            if origin is list and val is not None:
+                item_type = get_args(f_type)[0]
+                kwargs[f_name] = [from_dict_to_dataclass(item_type, i) for i in val] if is_dataclass(item_type) else val
+            elif is_dataclass(f_type) and val is not None:
+                kwargs[f_name] = from_dict_to_dataclass(f_type, val)
+            else:
+                kwargs[f_name] = val
+    return cls(**kwargs)
+
+# --- Data Management ---
 class DataManager:
-    """Handles loading, saving, and indexing all project data."""
     def __init__(self, base_path="data"):
         self.base_path = base_path
-        self.images_path = os.path.join(self.base_path, "images")
-        self.asset_map = {
-            "characters": {"class": Character, "list": [], "dict": {}},
-            "locations": {"class": Location, "list": [], "dict": {}},
-            "factions": {"class": Faction, "list": [], "dict": {}},
-            "districts": {"class": District, "list": [], "dict": {}},
-            "items": {"class": Item, "list": [], "dict": {}},
-            "clues": {"class": Clue, "list": [], "dict": {}},
-            "timeline_events": {"class": TimelineEvent, "list": [], "dict": {}},
-        }
-        self.case_meta = CaseMeta(victim="", culprit="", crimeScene="", murderWeapon="", coreMysterySolutionDetails="")
-        self.load_all()
+        self.case_files = {}
+        self.load_all_cases()
 
-    def get_asset_list(self, asset_type):
-        return self.asset_map.get(asset_type, {}).get("list", [])
-
-    def get_asset_dict(self, asset_type):
-        return self.asset_map.get(asset_type, {}).get("dict", {})
-
-    def load_all(self):
+    def load_all_cases(self):
         os.makedirs(self.base_path, exist_ok=True)
-        os.makedirs(self.images_path, exist_ok=True)
-        for asset_type, data in self.asset_map.items():
-            self._load_json(asset_type, data["class"])
-        case_meta_path = os.path.join(self.base_path, "case_meta.json")
-        if os.path.exists(case_meta_path):
-            try:
-                with open(case_meta_path, "r") as f:
-                    self.case_meta = CaseMeta(**json.load(f))
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.error(f"Could not load or parse {case_meta_path}: {e}")
+        self.case_files.clear()
+        for filename in os.listdir(self.base_path):
+            if filename.endswith(".json"):
+                try:
+                    path = os.path.join(self.base_path, filename)
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        case_obj = from_dict_to_dataclass(schemas.CaseFile, data)
+                        self.case_files[case_obj.caseId] = case_obj
+                except Exception as e:
+                    logger.error(f"Failed to load case file {filename}: {e}")
 
-    def _load_json(self, asset_type, data_class):
-        path = os.path.join(self.base_path, f"{asset_type}.json")
-        asset_list = self.get_asset_list(asset_type)
-        asset_dict = self.get_asset_dict(asset_type)
-        asset_list.clear()
-        asset_dict.clear()
-        if os.path.exists(path):
-            try:
-                with open(path, "r") as f:
-                    data = json.load(f)
-                    for item_data in data:
-                        try:
-                            valid_fields = {f.name for f in data_class.__dataclass_fields__.values()}
-                            filtered_data = {k: v for k, v in item_data.items() if k in valid_fields}
-                            asset = data_class(**filtered_data)
-                            asset_list.append(asset)
-                            asset_dict[asset.id] = asset
-                        except (TypeError, KeyError) as te:
-                            logger.warning(f"Skipping invalid item in {path}: {te} - Data: {item_data}")
-            except json.JSONDecodeError as e:
-                logger.error(f"Could not parse {path}: {e}")
+    def get_case(self, case_id):
+        return self.case_files.get(case_id)
 
-    def save_asset(self, asset_type):
-        path = os.path.join(self.base_path, f"{asset_type}.json")
-        asset_list = self.get_asset_list(asset_type)
+    def save_case(self, case_obj):
+        path = os.path.join(self.base_path, f"{case_obj.caseId}.json")
         try:
-            with open(path, "w") as f:
-                json.dump([asdict(c) for c in asset_list], f, indent=4)
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(case_obj, f, indent=4, cls=DataclassJSONEncoder)
+            self.case_files[case_obj.caseId] = case_obj
         except Exception as e:
-            logger.error(f"Failed to save {asset_type} to {path}: {e}")
+            logger.error(f"Failed to save case {case_obj.caseId}: {e}")
 
-    def add_asset(self, asset_type, **kwargs):
-        if asset_type not in self.asset_map: return None
-        asset_class = self.asset_map[asset_type]["class"]
-        new_id = str(uuid.uuid4())
-        if 'name' not in kwargs and 'fullName' not in kwargs:
-             kwargs['name'] = "Unnamed"
-        if asset_type == "characters":
-            kwargs.setdefault('biography', "")
-            kwargs.setdefault('personality', "")
-            kwargs.setdefault('alignment', "True Neutral")
-            kwargs.setdefault('honesty', 50)
-            kwargs.setdefault('victimLikelihood', 50)
-            kwargs.setdefault('killerLikelihood', 50)
-        new_asset = asset_class(id=new_id, **kwargs)
-        self.get_asset_list(asset_type).append(new_asset)
-        self.get_asset_dict(asset_type)[new_id] = new_asset
-        self.save_asset(asset_type)
-        return new_asset
-
-    def delete_asset(self, asset_type, asset_id):
-        asset_list = self.get_asset_list(asset_type)
-        asset_dict = self.get_asset_dict(asset_type)
-        asset_to_delete = asset_dict.get(asset_id)
-        if asset_to_delete:
-            asset_list.remove(asset_to_delete)
-            del asset_dict[asset_id]
-            self.save_asset(asset_type)
+    def create_new_case(self, title):
+        new_case = schemas.CaseFile(
+            caseId=f"case_{uuid.uuid4().hex[:8]}", title=title, synopsis="A new mystery is afoot.",
+            status="unsolved", difficulty=1,
+            groundTruth=schemas.GroundTruth(victimId="", perpetratorId="", motiveClueId="", meansClueId="", opportunityClueId=""),
+            locations=[], characters=[], clues=[], eventChain=[]
+        )
+        self.save_case(new_case)
+        return new_case
+    
+    def import_case_file(self, source_path):
+        try:
+            with open(source_path, 'r') as f:
+                data = json.load(f)
+                case_obj = from_dict_to_dataclass(schemas.CaseFile, data)
+            destination_path = os.path.join(self.base_path, os.path.basename(source_path))
+            shutil.copy(source_path, destination_path)
+            self.case_files[case_obj.caseId] = case_obj
             return True
-        return False
+        except Exception as e:
+            logger.error(f"Failed to import case file from {source_path}: {e}")
+            return False
 
-# --- Animated UI Components ---
+    def add_asset_to_case(self, case_obj, asset_type):
+        if asset_type == "characters":
+            new_char = schemas.Character(
+                characterId=f"char_{uuid.uuid4().hex[:8]}",
+                coreIdentity=schemas.CoreIdentity(fullName="New Character", age=30, employment=""),
+                psychologicalProfile=schemas.PsychologicalProfile(personalityArchetype="", motivations=[]),
+                systemFacing=schemas.SystemFacing(voiceModelArchetype="", knowledgeAreas=[])
+            )
+            case_obj.characters.append(new_char)
+        elif asset_type == "locations":
+            new_loc = schemas.Location(
+                locationId=f"loc_{uuid.uuid4().hex[:8]}",
+                coreDetails=schemas.LocationCoreDetails(name="New Location", description="", type=""),
+                geographic=schemas.Geographic(district=""),
+                systemic=schemas.Systemic(securityLevel=1, factionOwner="", informationValue=1)
+            )
+            case_obj.locations.append(new_loc)
+        self.save_case(case_obj)
 
-class AnimatedLineEdit(QLineEdit):
-    """A QLineEdit with an animated border color for focus effects."""
+# --- Material UI Components ---
+
+class MaterialButton(QPushButton):
+    """A QPushButton with a Material Design ripple effect."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The animation is now handled by the main QSS stylesheet using pseudo-states like :focus
+        self._ripple_radius = 0
+        self.ripple_pos = QPoint()
+        self.animation = QPropertyAnimation(self, b"ripple_radius", self)
+        self.animation.setDuration(400)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)
 
-class FadeInStackedWidget(QStackedWidget):
-    """A QStackedWidget that fades in the new widget."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def setCurrentWidget(self, widget):
-        if self.currentWidget() == widget:
-            return
-            
-        opacity_effect = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(opacity_effect)
-        
-        self.animation = QPropertyAnimation(opacity_effect, b"opacity")
-        self.animation.setDuration(250)
-        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
-        self.animation.setStartValue(0.0)
-        self.animation.setEndValue(1.0)
-        
-        super().setCurrentWidget(widget)
+    def mousePressEvent(self, event):
+        # Use the modern event.position() to avoid deprecation warnings
+        self.ripple_pos = event.position().toPoint()
+        self.animation.setStartValue(0)
+        self.animation.setEndValue(self.width() * 1.5)
         self.animation.start()
+        super().mousePressEvent(event)
 
-# --- Standard UI Components (PySide6) ---
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self.animation.state() == QPropertyAnimation.Running:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(Qt.NoPen)
+            
+            end_val = self.animation.endValue()
+            opacity = 0.0
+            if end_val > 0:
+                opacity = 1.0 - (self._ripple_radius / end_val)
+            
+            painter.setBrush(QColor(255, 255, 255, int(opacity * 60)))
+            painter.drawEllipse(self.ripple_pos, self._ripple_radius, self._ripple_radius)
 
-class AssetListView(QWidget):
-    """A reusable list view for displaying assets."""
-    def __init__(self, data_manager, on_select):
+    @Property(float)
+    def ripple_radius(self):
+        return self._ripple_radius
+
+    @ripple_radius.setter
+    def ripple_radius(self, value):
+        self._ripple_radius = value
+        self.update()
+
+class WelcomeWidget(QWidget):
+    create_new_case = Signal()
+    browse_for_case = Signal()
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        title_label = QLabel("The Agency")
+        title_label.setObjectName("welcomeTitle")
+        title_label.setAlignment(Qt.AlignCenter)
+        prompt_label = QLabel("Case Synthesis Terminal")
+        prompt_label.setObjectName("welcomePrompt")
+        prompt_label.setAlignment(Qt.AlignCenter)
+        button_layout = QHBoxLayout()
+        self.create_button = MaterialButton("Create New Case")
+        self.create_button.setObjectName("welcomeButton")
+        self.create_button.clicked.connect(self.create_new_case.emit)
+        self.browse_button = MaterialButton("Browse for Case...")
+        self.browse_button.setObjectName("welcomeButton")
+        self.browse_button.clicked.connect(self.browse_for_case.emit)
+        button_layout.addStretch()
+        button_layout.addWidget(self.create_button)
+        button_layout.addWidget(self.browse_button)
+        button_layout.addStretch()
+        layout.addStretch()
+        layout.addWidget(title_label)
+        layout.addWidget(prompt_label)
+        layout.addLayout(button_layout)
+        layout.addStretch()
+
+class CaseListView(QWidget):
+    case_selected = Signal(str)
+    create_new_case = Signal()
+    browse_for_case = Signal()
+
+    def __init__(self, data_manager):
         super().__init__()
         self.data_manager = data_manager
-        self.on_select = on_select
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(20,20,20,20)
+        self.stack = QStackedWidget()
+        self.welcome_widget = WelcomeWidget()
+        self.welcome_widget.create_new_case.connect(self.create_new_case.emit)
+        self.welcome_widget.browse_for_case.connect(self.browse_for_case.emit)
+        self.list_widget = QListWidget()
+        self.list_widget.itemClicked.connect(self.on_item_clicked)
+        self.stack.addWidget(self.welcome_widget)
+        self.stack.addWidget(self.list_widget)
+        self.main_layout.addWidget(self.stack)
+        self.refresh_list()
+
+    def refresh_list(self):
+        self.data_manager.load_all_cases()
+        self.list_widget.clear()
+        if not self.data_manager.case_files:
+            self.stack.setCurrentWidget(self.welcome_widget)
+        else:
+            self.stack.setCurrentWidget(self.list_widget)
+            for case_id, case_obj in self.data_manager.case_files.items():
+                item = QListWidgetItem(case_obj.title)
+                item.setData(Qt.UserRole, case_id)
+                self.list_widget.addItem(item)
+
+    def on_item_clicked(self, item):
+        self.case_selected.emit(item.data(Qt.UserRole))
+
+class DetailView(QFrame):
+    """Base class for detail editor views with card styling."""
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("detailCard")
+
+class CharacterDetailView(DetailView):
+    def __init__(self, character_obj, on_save):
+        super().__init__()
+        self.character = character_obj
+        self.on_save = on_save
+        self.layout = QFormLayout(self)
+        self.layout.setContentsMargins(20,20,20,20)
+        self.name_field = QLineEdit(self.character.coreIdentity.fullName)
+        self.age_field = QLineEdit(str(self.character.coreIdentity.age))
+        self.employment_field = QLineEdit(self.character.coreIdentity.employment)
+        self.archetype_field = QLineEdit(self.character.psychologicalProfile.personalityArchetype)
+        self.layout.addRow("Full Name:", self.name_field)
+        self.layout.addRow("Age:", self.age_field)
+        self.layout.addRow("Employment:", self.employment_field)
+        self.layout.addRow("Archetype:", self.archetype_field)
+        self.save_button = MaterialButton("Save Character")
+        self.save_button.clicked.connect(self.save)
+        self.layout.addRow(self.save_button)
+
+    def save(self):
+        self.character.coreIdentity.fullName = self.name_field.text()
+        self.character.coreIdentity.age = int(self.age_field.text()) if self.age_field.text().isdigit() else 0
+        self.character.coreIdentity.employment = self.employment_field.text()
+        self.character.psychologicalProfile.personalityArchetype = self.archetype_field.text()
+        self.on_save()
+
+class LocationDetailView(DetailView):
+    def __init__(self, location_obj, on_save):
+        super().__init__()
+        self.location = location_obj
+        self.on_save = on_save
+        self.layout = QFormLayout(self)
+        self.layout.setContentsMargins(20,20,20,20)
+        self.name_field = QLineEdit(self.location.coreDetails.name)
+        self.desc_field = QTextEdit(self.location.coreDetails.description)
+        self.type_field = QLineEdit(self.location.coreDetails.type)
+        self.layout.addRow("Name:", self.name_field)
+        self.layout.addRow("Description:", self.desc_field)
+        self.layout.addRow("Type:", self.type_field)
+        self.save_button = MaterialButton("Save Location")
+        self.save_button.clicked.connect(self.save)
+        self.layout.addRow(self.save_button)
+
+    def save(self):
+        self.location.coreDetails.name = self.name_field.text()
+        self.location.coreDetails.description = self.desc_field.toPlainText()
+        self.location.coreDetails.type = self.type_field.text()
+        self.on_save()
+
+class CaseDetailView(QWidget):
+    case_updated = Signal()
+    back_to_menu = Signal()
+
+    def __init__(self, case_obj, data_manager):
+        super().__init__()
+        self.case = case_obj
+        self.data_manager = data_manager
         self.current_asset_type = "characters"
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0,0,0,0)
+        
+        self.splitter = QSplitter(Qt.Horizontal)
+        
+        self.left_pane = QFrame()
+        self.left_pane.setObjectName("leftPane")
+        self.left_layout = QVBoxLayout(self.left_pane)
+        
+        self.top_bar = QHBoxLayout()
+        self.back_button = MaterialButton("< Back")
+        self.back_button.clicked.connect(self.back_to_menu.emit)
+        self.case_title_label = QLabel(case_obj.title)
+        self.case_title_label.setObjectName("caseTitleLabel")
+        self.top_bar.addWidget(self.back_button)
+        self.top_bar.addWidget(self.case_title_label)
+        self.top_bar.addStretch()
+        self.left_layout.addLayout(self.top_bar)
 
-        self.add_button = QPushButton("Add Character")
-        self.add_button.clicked.connect(self.add_asset)
-        self.layout.addWidget(self.add_button)
+        self.asset_nav_bar = QHBoxLayout()
+        self.asset_buttons = { "Characters": "characters", "Locations": "locations", "Clues": "clues" }
+        for name, key in self.asset_buttons.items():
+            button = MaterialButton(name)
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked, at=key: self.set_asset_view(at))
+            self.asset_nav_bar.addWidget(button)
+        self.left_layout.addLayout(self.asset_nav_bar)
+        
+        self.add_asset_button = MaterialButton("+ Add Character")
+        self.add_asset_button.setObjectName("addButton")
+        self.add_asset_button.clicked.connect(self.add_new_asset)
+        self.left_layout.addWidget(self.add_asset_button)
 
-        self.list_widget = QListWidget()
-        self.list_widget.itemClicked.connect(self._handle_item_clicked)
-        self.layout.addWidget(self.list_widget)
+        self.asset_list_widget = QListWidget()
+        self.asset_list_widget.itemClicked.connect(self.on_asset_selected)
+        self.left_layout.addWidget(self.asset_list_widget)
 
-        self.update_list()
+        self.detail_stack = QStackedWidget()
+        self.placeholder_view = QLabel("Select an asset to edit")
+        self.placeholder_view.setAlignment(Qt.AlignCenter)
+        self.placeholder_view.setObjectName("placeholderLabel")
+        self.detail_stack.addWidget(self.placeholder_view)
 
-    def set_asset_type(self, asset_type):
+        self.splitter.addWidget(self.left_pane)
+        self.splitter.addWidget(self.detail_stack)
+        self.splitter.setSizes([400, 800])
+        self.main_layout.addWidget(self.splitter)
+        
+        self.asset_nav_bar.itemAt(0).widget().setChecked(True)
+        self.set_asset_view("characters")
+
+    def set_asset_view(self, asset_type):
+        for i in range(self.asset_nav_bar.count()):
+            btn = self.asset_nav_bar.itemAt(i).widget()
+            btn.setChecked(btn.text().lower() == asset_type)
         self.current_asset_type = asset_type
-        self.add_button.setText(f"Add {asset_type.replace('_', ' ').capitalize()[:-1]}")
-        self.update_list()
+        self.add_asset_button.setText(f"+ Add {asset_type.capitalize()[:-1]}")
+        self.populate_asset_list()
+        self.detail_stack.setCurrentWidget(self.placeholder_view)
 
-    def update_list(self):
-        self.list_widget.clear()
-        assets = self.data_manager.get_asset_list(self.current_asset_type)
+    def populate_asset_list(self):
+        self.asset_list_widget.clear()
+        assets = getattr(self.case, self.current_asset_type, [])
         for asset in assets:
-            display_name = getattr(asset, 'fullName', getattr(asset, 'name', 'Unnamed'))
-            item = QListWidgetItem(display_name)
-            item.setData(Qt.UserRole, asset) # Store the whole object
-            self.list_widget.addItem(item)
+            name, id_val = "", ""
+            if self.current_asset_type == "characters": name, id_val = asset.coreIdentity.fullName, asset.characterId
+            elif self.current_asset_type == "locations": name, id_val = asset.coreDetails.name, asset.locationId
+            elif self.current_asset_type == "clues": name, id_val = asset.name, asset.clueId
+            if name and id_val:
+                item = QListWidgetItem(name)
+                item.setData(Qt.UserRole, id_val)
+                self.asset_list_widget.addItem(item)
 
-    def add_asset(self):
-        if self.current_asset_type == "characters":
-            self.data_manager.add_asset(self.current_asset_type, fullName="New Character")
-        else:
-            self.data_manager.add_asset(self.current_asset_type, name=f"New {self.current_asset_type.capitalize()[:-1]}", description="")
-        self.update_list()
+    def add_new_asset(self):
+        self.data_manager.add_asset_to_case(self.case, self.current_asset_type)
+        self.populate_asset_list()
 
-    def _handle_item_clicked(self, item):
-        asset = item.data(Qt.UserRole)
-        self.on_select(asset)
+    def on_asset_selected(self, item):
+        asset_id = item.data(Qt.UserRole)
+        assets = getattr(self.case, self.current_asset_type)
+        id_field = f"{self.current_asset_type[:-1]}Id"
+        asset = next((a for a in assets if getattr(a, id_field) == asset_id), None)
+        if asset:
+            if self.detail_stack.count() > 1:
+                old = self.detail_stack.widget(1)
+                self.detail_stack.removeWidget(old)
+                old.deleteLater()
+            editor = None
+            if self.current_asset_type == "characters": editor = CharacterDetailView(asset, self.on_asset_save)
+            elif self.current_asset_type == "locations": editor = LocationDetailView(asset, self.on_asset_save)
+            if editor:
+                self.detail_stack.addWidget(editor)
+                self.detail_stack.setCurrentWidget(editor)
 
-class BaseDetailView(QWidget):
-    """A base class for common detail view functionality."""
-    def __init__(self, asset, data_manager, asset_type, on_save, on_delete):
-        super().__init__()
-        self.asset = asset
-        self.data_manager = data_manager
-        self.asset_type = asset_type
-        self.on_save = on_save
-        self.on_delete = on_delete
+    def on_asset_save(self):
+        self.data_manager.save_case(self.case)
+        self.populate_asset_list()
+        self.case_updated.emit()
 
-        self.layout = QVBoxLayout(self)
-        self.form_layout = QFormLayout()
+class NoiseOverlay(QWidget):
+    """A semi-transparent overlay with a noise/scan-line effect."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.noise_pixmap = self._create_noise_texture(512, 512)
 
-        self.name_field = AnimatedLineEdit(getattr(self.asset, 'fullName', getattr(self.asset, 'name', '')))
-        self.description_field = QTextEdit(getattr(self.asset, 'description', getattr(self.asset, 'biography', '')))
-        
-        self.form_layout.addRow("Name:", self.name_field)
-        self.form_layout.addRow("Description:", self.description_field)
-        
-        self.layout.addLayout(self.form_layout)
-        
-        self.button_layout = QHBoxLayout()
-        self.save_button = QPushButton("Save")
-        self.save_button.clicked.connect(self.save_clicked)
-        self.delete_button = QPushButton("Delete")
-        self.delete_button.clicked.connect(self.delete_clicked)
-        self.button_layout.addWidget(self.save_button)
-        self.button_layout.addWidget(self.delete_button)
-        self.layout.addLayout(self.button_layout)
+    def _create_noise_texture(self, width, height):
+        image = QPixmap(width, height)
+        image.fill(Qt.transparent)
+        painter = QPainter(image)
+        painter.setPen(QColor(255, 255, 255, 5))
+        for _ in range(10000):
+            painter.drawPoint(uuid.uuid4().int % width, uuid.uuid4().int % height)
+        painter.end()
+        return image
 
-    def save_clicked(self):
-        # This method should be overridden by subclasses
-        if hasattr(self.asset, 'fullName'):
-            self.asset.fullName = self.name_field.text()
-            self.asset.biography = self.description_field.toPlainText()
-        else:
-            self.asset.name = self.name_field.text()
-            self.asset.description = self.description_field.toPlainText()
-        
-        self.data_manager.save_asset(self.asset_type)
-        self.on_save(self.asset)
-
-    def delete_clicked(self):
-        self.data_manager.delete_asset(self.asset_type, self.asset.id)
-        self.on_delete()
-
-class CharacterDetailView(BaseDetailView):
-    """A detail view for editing a Character."""
-    def __init__(self, character, data_manager, on_save, on_delete):
-        super().__init__(character, data_manager, "characters", on_save, on_delete)
-
-        self.personality_field = QTextEdit(self.asset.personality)
-        self.alignment_dropdown = QComboBox()
-        self.alignment_dropdown.addItems(get_args(Alignment))
-        self.alignment_dropdown.setCurrentText(self.asset.alignment)
-
-        # Insert additional fields into the form layout
-        self.form_layout.insertRow(1, "Alignment:", self.alignment_dropdown)
-        self.form_layout.addRow("Personality:", self.personality_field)
-
-    def save_clicked(self):
-        super().save_clicked() # Call base save method
-        self.asset.personality = self.personality_field.toPlainText()
-        self.asset.alignment = self.alignment_dropdown.currentText()
-        self.data_manager.save_asset(self.asset_type)
-        self.on_save(self.asset)
-
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.drawTiledPixmap(self.rect(), self.noise_pixmap)
 
 class MainWindow(QMainWindow):
-    """The main application window."""
     def __init__(self):
         super().__init__()
         self.setWindowTitle("The Agency")
         self.setGeometry(100, 100, 1200, 800)
-
         self.data_manager = DataManager()
-        
-        # --- Main Layout ---
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        self.main_layout = QHBoxLayout(self.central_widget)
-
-        # --- Navigation Rail ---
-        self.nav_rail = QWidget()
-        self.nav_layout = QVBoxLayout(self.nav_rail)
-        self.nav_rail.setFixedWidth(150)
-
-        self.nav_buttons = {
-            "Characters": "characters",
-            "Locations": "locations",
-            "Factions": "factions",
-            "Districts": "districts",
-            "Items": "items",
-            "Plot Graph": "plot_graph",
-        }
-
-        for name, asset_type in self.nav_buttons.items():
-            button = QPushButton(name)
-            button.clicked.connect(lambda checked, at=asset_type: self.change_view(at))
-            self.nav_layout.addWidget(button)
-        self.nav_layout.addStretch()
-
-        # --- List Pane ---
-        self.list_pane = AssetListView(self.data_manager, self.on_asset_select)
-
-        # --- Detail Pane ---
-        self.detail_stack = FadeInStackedWidget()
-        self.placeholder_view = QLabel("Select an item to see details.")
-        self.placeholder_view.setAlignment(Qt.AlignCenter)
-        self.detail_stack.addWidget(self.placeholder_view) # Add placeholder permanently
-
-        # --- Splitter to manage panes ---
-        self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.addWidget(self.list_pane)
-        self.splitter.addWidget(self.detail_stack)
-        self.splitter.setSizes([300, 900])
-
-        self.main_layout.addWidget(self.nav_rail)
-        self.main_layout.addWidget(self.splitter)
-
+        self.main_stack = QStackedWidget()
+        self.setCentralWidget(self.main_stack)
+        self.case_list_view = CaseListView(self.data_manager)
+        self.case_list_view.case_selected.connect(self.open_case_view)
+        self.case_list_view.create_new_case.connect(self.create_new_case)
+        self.case_list_view.browse_for_case.connect(self.browse_for_case)
+        self.main_stack.addWidget(self.case_list_view)
+        self.noise_overlay = NoiseOverlay(self.centralWidget())
         self.apply_holo_noir_style()
 
+    def resizeEvent(self, event):
+        self.noise_overlay.resize(event.size())
+        super().resizeEvent(event)
+
+    def create_new_case(self):
+        text, ok = QInputDialog.getText(self, 'Create New Case', 'Enter case title:')
+        if ok and text:
+            self.data_manager.create_new_case(title=text)
+            self.case_list_view.refresh_list()
+
+    def browse_for_case(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Browse for Case File", "", "JSON Files (*.json)")
+        if file_path and self.data_manager.import_case_file(file_path):
+            self.case_list_view.refresh_list()
+
+    def open_case_view(self, case_id):
+        case_obj = self.data_manager.get_case(case_id)
+        if case_obj:
+            case_detail_view = CaseDetailView(case_obj, self.data_manager)
+            case_detail_view.case_updated.connect(self.case_list_view.refresh_list)
+            case_detail_view.back_to_menu.connect(self.show_case_list)
+            self.main_stack.addWidget(case_detail_view)
+            self.main_stack.setCurrentWidget(case_detail_view)
+    
+    def show_case_list(self):
+        if self.main_stack.count() > 1:
+            old = self.main_stack.currentWidget()
+            self.main_stack.removeWidget(old)
+            old.deleteLater()
+        self.main_stack.setCurrentWidget(self.case_list_view)
+
     def apply_holo_noir_style(self):
-        """Applies the 'Holo-Noir' theme using QSS."""
         self.setStyleSheet("""
-            QMainWindow, QWidget {
-                background-color: #111827;
-                color: #E0E0E0;
-                font-family: Inter, sans-serif;
-            }
-            QListWidget {
-                background-color: #1F2937;
-                border: 1px solid #374151;
-                border-radius: 5px;
-            }
-            QListWidget::item {
-                padding: 8px;
-            }
-            QListWidget::item:hover {
-                background-color: #374151; /* Holographic Card effect */
-            }
-            QListWidget::item:selected {
-                background-color: #82B1FF;
-                color: #111827;
-            }
-            QPushButton {
-                background-color: #374151;
-                border: 1px solid #4B5563;
-                padding: 8px;
-                border-radius: 5px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #4B5563;
-            }
-            QPushButton:pressed {
-                background-color: #82B1FF;
-                color: #111827;
-            }
-            QLineEdit, QTextEdit, QComboBox {
-                background-color: #1F2937;
-                border: 1px solid #374151;
-                padding: 5px;
-                border-radius: 3px;
-            }
-            QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
-                 border: 1px solid #82B1FF;
-            }
-            AnimatedLineEdit:focus {
-                background-color: #374151;
-            }
-            QLabel {
-                font-size: 14px;
-            }
-            QSplitter::handle {
-                background-color: #374151;
-            }
-            QSplitter::handle:horizontal {
-                width: 1px;
-            }
-        """)
-
-    def change_view(self, asset_type):
-        """Changes the asset type displayed in the list view."""
-        if asset_type == "plot_graph":
-            self.list_pane.setVisible(False)
-            plot_graph_view = QLabel("Interactive Plot Graph (Coming Soon!)")
-            plot_graph_view.setAlignment(Qt.AlignCenter)
-            self.set_detail_view(plot_graph_view)
-        else:
-            self.list_pane.setVisible(True)
-            self.list_pane.set_asset_type(asset_type)
-            self.set_detail_view(self.placeholder_view)
-
-    def on_asset_select(self, asset):
-        """Callback to display the detail view for a selected asset."""
-        asset_type = self.list_pane.current_asset_type
-        
-        on_save_callback = lambda updated_asset: self.list_pane.update_list()
-        on_delete_callback = lambda: self.set_detail_view(self.placeholder_view)
-
-        if asset_type == "characters":
-            view = CharacterDetailView(asset, self.data_manager, on_save_callback, on_delete_callback)
-            self.set_detail_view(view)
-        elif asset_type in ["locations", "factions", "districts", "items"]:
-             view = BaseDetailView(asset, self.data_manager, asset_type, on_save_callback, on_delete_callback)
-             self.set_detail_view(view)
-        else:
-            view = QLabel(f"Detail view for {asset_type} not implemented.")
-            view.setAlignment(Qt.AlignCenter)
-            self.set_detail_view(view)
-
-    def set_detail_view(self, widget):
-        """Clears any non-permanent widgets and adds/shows the new one."""
-        if widget == self.placeholder_view:
-            # If we're showing the placeholder, just set it as current
-            self.detail_stack.setCurrentWidget(self.placeholder_view)
-        else:
-            # If it's a new detail view, remove the old one (if it exists)
-            if self.detail_stack.count() > 1:
-                old_widget = self.detail_stack.widget(1)
-                self.detail_stack.removeWidget(old_widget)
-                old_widget.deleteLater()
+            QMainWindow { background-color: #10141a; }
+            QWidget { color: #e0e0e0; font-family: 'Roboto', sans-serif; font-size: 14px; }
             
-            self.detail_stack.addWidget(widget)
-            self.detail_stack.setCurrentWidget(widget)
+            #welcomeTitle { font-size: 48px; font-weight: bold; color: #ffffff; }
+            #welcomePrompt { font-size: 18px; color: #a0a0a0; }
+            #welcomeButton, #addButton { 
+                padding: 12px 24px; font-size: 14px; font-weight: bold;
+                background-color: #00e5ff; color: #10141a; border: none; border-radius: 8px;
+            }
+            #welcomeButton:hover, #addButton:hover { background-color: #81ffff; }
 
+            #leftPane { background-color: #1c222b; border-right: 1px solid #2c333d; }
+            #caseTitleLabel { font-size: 24px; font-weight: bold; color: #ffffff; }
+            
+            QListWidget { background-color: transparent; border: none; }
+            QListWidget::item { padding: 12px; border-radius: 8px; }
+            QListWidget::item:hover { background-color: #2c333d; }
+            QListWidget::item:selected { background-color: #00e5ff; color: #10141a; font-weight: bold; }
+            
+            QPushButton {
+                background-color: transparent; border: 1px solid #2c333d;
+                padding: 8px 16px; font-size: 14px; border-radius: 8px;
+            }
+            QPushButton:hover { background-color: #2c333d; }
+            QPushButton:pressed { background-color: #00e5ff; color: #10141a; }
+            QPushButton:checked { background-color: #00e5ff; color: #10141a; border: 1px solid #00e5ff; }
+
+            QLineEdit, QTextEdit, QComboBox {
+                background-color: #2c333d; border: none; border-radius: 8px;
+                padding: 12px; font-size: 14px;
+            }
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus { background-color: #3c444d; }
+            
+            #detailCard {
+                background-color: #1c222b;
+                border-radius: 12px;
+                margin: 20px;
+            }
+            
+            #placeholderLabel { font-size: 20px; color: #5c636d; }
+            QSplitter::handle { background-color: #2c333d; }
+            QSplitter::handle:horizontal { width: 1px; }
+
+            QScrollBar:vertical {
+                border: none; background: #1c222b; width: 10px; margin: 0px;
+            }
+            QScrollBar::handle:vertical { background: #3c444d; border-radius: 5px; min-height: 20px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+        """)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

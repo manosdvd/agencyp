@@ -1,0 +1,58 @@
+{
+    "caseId": "case_98e632f2",
+    "title": "Test Case",
+    "synopsis": "A new mystery is afoot.",
+    "status": "unsolved",
+    "difficulty": 1,
+    "groundTruth": {
+        "victimId": "",
+        "perpetratorId": "",
+        "motiveClueId": "",
+        "meansClueId": "",
+        "opportunityClueId": ""
+    },
+    "locations": [],
+    "characters": [
+        {
+            "characterId": "char_20a89ee2",
+            "coreIdentity": {
+                "fullName": "New Character",
+                "age": 30,
+                "employment": "",
+                "imageUrl": null
+            },
+            "psychologicalProfile": {
+                "personalityArchetype": "",
+                "motivations": []
+            },
+            "systemFacing": {
+                "voiceModelArchetype": "",
+                "knowledgeAreas": [],
+                "murderLikelihood": null,
+                "victimLikelihood": null
+            }
+        },
+        {
+            "characterId": "char_65563a48",
+            "coreIdentity": {
+                "fullName": "New Character",
+                "age": 30,
+                "employment": "",
+                "imageUrl": null
+            },
+            "psychologicalProfile": {
+                "personalityArchetype": "",
+                "motivations": []
+            },
+            "systemFacing": {
+                "voiceModelArchetype": "",
+                "knowledgeAreas": [],
+                "murderLikelihood": null,
+                "victimLikelihood": null
+            }
+        }
+    ],
+    "clues": [],
+    "eventChain": [],
+    "imageUrl": null
+}
