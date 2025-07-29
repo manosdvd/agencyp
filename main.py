@@ -13,10 +13,11 @@ from typing import get_args
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QLabel, QLineEdit,
-    QTextEdit, QComboBox, QFrame, QSplitter, QStackedWidget, QFormLayout
+    QTextEdit, QComboBox, QFrame, QSplitter, QStackedWidget, QFormLayout,
+    QGraphicsOpacityEffect
 )
 from PySide6.QtGui import QIcon, QFont, QColor, QPalette
-from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent
+from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent, Property
 
 # --- Schema Imports ---
 from schemas import (
@@ -137,34 +138,28 @@ class AnimatedLineEdit(QLineEdit):
     """A QLineEdit with an animated border color for focus effects."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.animation = QPropertyAnimation(self, b"styleSheet")
-        self.animation.setDuration(200) # milliseconds
-        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+        # The animation is now handled by the main QSS stylesheet using pseudo-states like :focus
 
-    def event(self, event):
-        if event.type() == QEvent.FocusIn:
-            self.animation.setStartValue(self.styleSheet())
-            self.animation.setEndValue("""
-                QLineEdit {
-                    border: 1px solid #82B1FF;
-                    background-color: #374151;
-                    padding: 5px;
-                    border-radius: 3px;
-                }
-            """)
-            self.animation.start()
-        elif event.type() == QEvent.FocusOut:
-            self.animation.setStartValue(self.styleSheet())
-            self.animation.setEndValue("""
-                QLineEdit {
-                    border: 1px solid #374151;
-                    background-color: #1F2937;
-                    padding: 5px;
-                    border-radius: 3px;
-                }
-            """)
-            self.animation.start()
-        return super().event(event)
+class FadeInStackedWidget(QStackedWidget):
+    """A QStackedWidget that fades in the new widget."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def setCurrentWidget(self, widget):
+        if self.currentWidget() == widget:
+            return
+            
+        opacity_effect = QGraphicsOpacityEffect(widget)
+        widget.setGraphicsEffect(opacity_effect)
+        
+        self.animation = QPropertyAnimation(opacity_effect, b"opacity")
+        self.animation.setDuration(250)
+        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation.setStartValue(0.0)
+        self.animation.setEndValue(1.0)
+        
+        super().setCurrentWidget(widget)
+        self.animation.start()
 
 # --- Standard UI Components (PySide6) ---
 
@@ -207,40 +202,34 @@ class AssetListView(QWidget):
         if self.current_asset_type == "characters":
             self.data_manager.add_asset(self.current_asset_type, fullName="New Character")
         else:
-            self.data_manager.add_asset(self.current_asset_type, name=f"New {self.current_asset_type.capitalize()[:-1]}")
+            self.data_manager.add_asset(self.current_asset_type, name=f"New {self.current_asset_type.capitalize()[:-1]}", description="")
         self.update_list()
 
     def _handle_item_clicked(self, item):
         asset = item.data(Qt.UserRole)
         self.on_select(asset)
 
-class CharacterDetailView(QWidget):
-    """A detail view for editing a Character."""
-    def __init__(self, character, data_manager, on_save, on_delete):
+class BaseDetailView(QWidget):
+    """A base class for common detail view functionality."""
+    def __init__(self, asset, data_manager, asset_type, on_save, on_delete):
         super().__init__()
-        self.character = character
+        self.asset = asset
         self.data_manager = data_manager
+        self.asset_type = asset_type
         self.on_save = on_save
         self.on_delete = on_delete
 
         self.layout = QVBoxLayout(self)
         self.form_layout = QFormLayout()
 
-        # Use the new animated line edit
-        self.name_field = AnimatedLineEdit(self.character.fullName)
-        self.bio_field = QTextEdit(self.character.biography)
-        self.personality_field = QTextEdit(self.character.personality)
-        self.alignment_dropdown = QComboBox()
-        self.alignment_dropdown.addItems(get_args(Alignment))
-        self.alignment_dropdown.setCurrentText(self.character.alignment)
-
-        self.form_layout.addRow("Full Name:", self.name_field)
-        self.form_layout.addRow("Alignment:", self.alignment_dropdown)
-        self.form_layout.addRow("Biography:", self.bio_field)
-        self.form_layout.addRow("Personality:", self.personality_field)
-
+        self.name_field = AnimatedLineEdit(getattr(self.asset, 'fullName', getattr(self.asset, 'name', '')))
+        self.description_field = QTextEdit(getattr(self.asset, 'description', getattr(self.asset, 'biography', '')))
+        
+        self.form_layout.addRow("Name:", self.name_field)
+        self.form_layout.addRow("Description:", self.description_field)
+        
         self.layout.addLayout(self.form_layout)
-
+        
         self.button_layout = QHBoxLayout()
         self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(self.save_clicked)
@@ -251,16 +240,42 @@ class CharacterDetailView(QWidget):
         self.layout.addLayout(self.button_layout)
 
     def save_clicked(self):
-        self.character.fullName = self.name_field.text()
-        self.character.biography = self.bio_field.toPlainText()
-        self.character.personality = self.personality_field.toPlainText()
-        self.character.alignment = self.alignment_dropdown.currentText()
-        self.data_manager.save_asset("characters")
-        self.on_save(self.character)
+        # This method should be overridden by subclasses
+        if hasattr(self.asset, 'fullName'):
+            self.asset.fullName = self.name_field.text()
+            self.asset.biography = self.description_field.toPlainText()
+        else:
+            self.asset.name = self.name_field.text()
+            self.asset.description = self.description_field.toPlainText()
+        
+        self.data_manager.save_asset(self.asset_type)
+        self.on_save(self.asset)
 
     def delete_clicked(self):
-        self.data_manager.delete_asset("characters", self.character.id)
+        self.data_manager.delete_asset(self.asset_type, self.asset.id)
         self.on_delete()
+
+class CharacterDetailView(BaseDetailView):
+    """A detail view for editing a Character."""
+    def __init__(self, character, data_manager, on_save, on_delete):
+        super().__init__(character, data_manager, "characters", on_save, on_delete)
+
+        self.personality_field = QTextEdit(self.asset.personality)
+        self.alignment_dropdown = QComboBox()
+        self.alignment_dropdown.addItems(get_args(Alignment))
+        self.alignment_dropdown.setCurrentText(self.asset.alignment)
+
+        # Insert additional fields into the form layout
+        self.form_layout.insertRow(1, "Alignment:", self.alignment_dropdown)
+        self.form_layout.addRow("Personality:", self.personality_field)
+
+    def save_clicked(self):
+        super().save_clicked() # Call base save method
+        self.asset.personality = self.personality_field.toPlainText()
+        self.asset.alignment = self.alignment_dropdown.currentText()
+        self.data_manager.save_asset(self.asset_type)
+        self.on_save(self.asset)
+
 
 class MainWindow(QMainWindow):
     """The main application window."""
@@ -300,10 +315,10 @@ class MainWindow(QMainWindow):
         self.list_pane = AssetListView(self.data_manager, self.on_asset_select)
 
         # --- Detail Pane ---
-        self.detail_stack = QStackedWidget()
+        self.detail_stack = FadeInStackedWidget()
         self.placeholder_view = QLabel("Select an item to see details.")
         self.placeholder_view.setAlignment(Qt.AlignCenter)
-        self.detail_stack.addWidget(self.placeholder_view)
+        self.detail_stack.addWidget(self.placeholder_view) # Add placeholder permanently
 
         # --- Splitter to manage panes ---
         self.splitter = QSplitter(Qt.Horizontal)
@@ -359,12 +374,11 @@ class MainWindow(QMainWindow):
                 padding: 5px;
                 border-radius: 3px;
             }
-            /* We remove the focus state from QSS to let the animation handle it */
-            QTextEdit, QComboBox {
-                 border: 1px solid #374151;
-            }
-            QTextEdit:focus, QComboBox:focus {
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
                  border: 1px solid #82B1FF;
+            }
+            AnimatedLineEdit:focus {
+                background-color: #374151;
             }
             QLabel {
                 font-size: 14px;
@@ -392,32 +406,35 @@ class MainWindow(QMainWindow):
     def on_asset_select(self, asset):
         """Callback to display the detail view for a selected asset."""
         asset_type = self.list_pane.current_asset_type
+        
+        on_save_callback = lambda updated_asset: self.list_pane.update_list()
+        on_delete_callback = lambda: self.set_detail_view(self.placeholder_view)
+
         if asset_type == "characters":
-            view = CharacterDetailView(
-                asset,
-                self.data_manager,
-                on_save=lambda updated_asset: self.list_pane.update_list(),
-                on_delete=lambda: (
-                    self.set_detail_view(self.placeholder_view),
-                    self.list_pane.update_list()
-                )
-            )
+            view = CharacterDetailView(asset, self.data_manager, on_save_callback, on_delete_callback)
             self.set_detail_view(view)
+        elif asset_type in ["locations", "factions", "districts", "items"]:
+             view = BaseDetailView(asset, self.data_manager, asset_type, on_save_callback, on_delete_callback)
+             self.set_detail_view(view)
         else:
-            # Placeholder for other asset types
             view = QLabel(f"Detail view for {asset_type} not implemented.")
             view.setAlignment(Qt.AlignCenter)
             self.set_detail_view(view)
 
     def set_detail_view(self, widget):
-        """Clears the detail stack and adds a new widget."""
-        # Clear previous widgets
-        while self.detail_stack.count() > 0:
-            w = self.detail_stack.widget(0)
-            self.detail_stack.removeWidget(w)
-            w.deleteLater()
-        self.detail_stack.addWidget(widget)
-        self.detail_stack.setCurrentWidget(widget)
+        """Clears any non-permanent widgets and adds/shows the new one."""
+        if widget == self.placeholder_view:
+            # If we're showing the placeholder, just set it as current
+            self.detail_stack.setCurrentWidget(self.placeholder_view)
+        else:
+            # If it's a new detail view, remove the old one (if it exists)
+            if self.detail_stack.count() > 1:
+                old_widget = self.detail_stack.widget(1)
+                self.detail_stack.removeWidget(old_widget)
+                old_widget.deleteLater()
+            
+            self.detail_stack.addWidget(widget)
+            self.detail_stack.setCurrentWidget(widget)
 
 
 if __name__ == "__main__":
