@@ -1,16 +1,19 @@
 # main.py
-# A UI/UX Demonstration of the "Deco-Futurism" Aesthetic
+# An advanced UI/UX Demonstration of the "Deco-Futurism" Aesthetic
+# with a procedural rainy cityscape background and refined Art Deco motifs.
 
 import sys
+import random
+import math
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QLabel, QLineEdit,
     QTextEdit, QFrame, QStackedWidget, QFormLayout,
-    QGraphicsDropShadowEffect, QComboBox
+    QGraphicsDropShadowEffect, QComboBox, QGraphicsOpacityEffect
 )
 from PySide6.QtGui import (
     QFont, QColor, QPalette, QPixmap, QPainter, QBrush, QPen,
-    QPainterPath, QLinearGradient
+    QPainterPath, QLinearGradient, QCursor
 )
 from PySide6.QtCore import (
     Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent, Property, Signal, 
@@ -23,6 +26,7 @@ class MaterialButton(QPushButton):
     """A QPushButton with a Material Design ripple effect and hover animation."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setCursor(Qt.PointingHandCursor)
         self._ripple_radius = 0
         self.ripple_pos = QPoint()
         
@@ -45,7 +49,7 @@ class MaterialButton(QPushButton):
             painter.setPen(Qt.NoPen)
             end_val = self.ripple_anim.endValue()
             opacity = 1.0 - (self._ripple_radius / end_val) if end_val > 0 else 0.0
-            painter.setBrush(QColor(255, 255, 255, int(opacity * 60)))
+            painter.setBrush(QColor(0, 229, 255, int(opacity * 80)))
             painter.drawEllipse(self.ripple_pos, self._ripple_radius, self._ripple_radius)
 
     @Property(float)
@@ -86,43 +90,39 @@ class AnimatedStackedWidget(QStackedWidget):
     """A QStackedWidget that slides and fades in new widgets."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.animation_speed = 400
-        self.animation_curve = QEasingCurve.OutCubic
-        self.current_index = 0
+        self.animation_speed = 500
+        self.animation_curve = QEasingCurve.OutExpo
         self.is_animating = False
 
     def setCurrentWidget(self, widget):
-        if self.is_animating: return
-        
-        new_index = self.indexOf(widget)
-        if self.currentIndex() == new_index: return
+        if self.is_animating or self.currentWidget() == widget:
+            return
 
         self.is_animating = True
-        
         current_widget = self.currentWidget()
         next_widget = widget
         
-        self.current_index = new_index
-        
         offset_x = self.width()
         
-        next_widget.setGeometry(offset_x, 0, self.width(), self.height())
+        next_widget.setGeometry(0, 0, self.width(), self.height())
+        
+        opacity_effect = QGraphicsOpacityEffect(next_widget)
+        next_widget.setGraphicsEffect(opacity_effect)
         
         anim_group = QParallelAnimationGroup(self)
 
-        # Animate current widget out
-        anim_current = QPropertyAnimation(current_widget, b"pos")
-        anim_current.setEndValue(QPoint(-offset_x, 0))
-        anim_current.setDuration(self.animation_speed)
-        anim_current.setEasingCurve(self.animation_curve)
-        anim_group.addAnimation(anim_current)
+        anim_pos = QPropertyAnimation(next_widget, b"pos")
+        anim_pos.setStartValue(QPoint(offset_x / 4, 0))
+        anim_pos.setEndValue(QPoint(0, 0))
+        anim_pos.setDuration(self.animation_speed)
+        anim_pos.setEasingCurve(self.animation_curve)
+        anim_group.addAnimation(anim_pos)
 
-        # Animate next widget in
-        anim_next = QPropertyAnimation(next_widget, b"pos")
-        anim_next.setEndValue(QPoint(0, 0))
-        anim_next.setDuration(self.animation_speed)
-        anim_next.setEasingCurve(self.animation_curve)
-        anim_group.addAnimation(anim_next)
+        anim_opacity = QPropertyAnimation(opacity_effect, b"opacity")
+        anim_opacity.setStartValue(0.0)
+        anim_opacity.setEndValue(1.0)
+        anim_opacity.setDuration(self.animation_speed / 2)
+        anim_group.addAnimation(anim_opacity)
         
         anim_group.finished.connect(self.animation_finished)
         super().setCurrentWidget(widget)
@@ -137,6 +137,7 @@ class AnimatedListItem(QWidget):
         super().__init__(parent)
         self.text = text
         self.bg_color = QColor("#1c222b")
+        self.setCursor(Qt.PointingHandCursor)
         
         self.shadow = QGraphicsDropShadowEffect(self)
         self.shadow.setBlurRadius(0)
@@ -173,21 +174,16 @@ class AnimatedListItem(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()).adjusted(2, 2, -2, -2), 8, 8)
-        
         painter.fillPath(path, self.bg_color)
-        
         painter.setPen(QColor("#e0e0e0"))
         font = QFont("Roboto", 11)
         painter.setFont(font)
         painter.drawText(self.rect().adjusted(15, 0, 0, 0), Qt.AlignVCenter, self.text)
 
     @Property(QColor)
-    def background_color(self):
-        return self.bg_color
-
+    def background_color(self): return self.bg_color
     @background_color.setter
     def background_color(self, color):
         self.bg_color = color
@@ -203,16 +199,33 @@ class DecoFrame(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Draw Gold Border
-        pen = QPen(QColor("#D4AF37"), 2)
+        pen = QPen(QColor("#D4AF37"), 1)
         painter.setPen(pen)
-        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
         
-        # Draw Cyan Inner Glow
-        pen.setColor(QColor(0, 229, 255, 50))
-        pen.setWidth(4)
-        painter.setPen(pen)
-        painter.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 11, 11)
+        # Main border
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
+
+        # Corner Details
+        corner_size = 20
+        for i in range(4):
+            path = QPainterPath()
+            if i == 0: # Top-left
+                path.moveTo(1, corner_size)
+                path.lineTo(1, 1)
+                path.lineTo(corner_size, 1)
+            elif i == 1: # Top-right
+                path.moveTo(self.width() - 1, corner_size)
+                path.lineTo(self.width() - 1, 1)
+                path.lineTo(self.width() - corner_size, 1)
+            elif i == 2: # Bottom-right
+                path.moveTo(self.width() - 1, self.height() - corner_size)
+                path.lineTo(self.width() - 1, self.height() - 1)
+                path.lineTo(self.width() - corner_size, self.height() - 1)
+            elif i == 3: # Bottom-left
+                path.moveTo(1, self.height() - corner_size)
+                path.lineTo(1, self.height() - 1)
+                path.lineTo(corner_size, self.height() - 1)
+            painter.drawPath(path)
 
 # --- Main Application Widgets ---
 
@@ -224,19 +237,75 @@ class DetailCard(DecoFrame):
         layout = QFormLayout(self)
         layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(20)
-        
         title_label = QLabel(title)
         title_label.setObjectName("cardTitle")
         layout.addRow(title_label)
-        
         layout.addRow("Name:", AnimatedLineEdit("John 'The Ghost' Doe"))
         layout.addRow("Status:", QComboBox())
         layout.addRow("Description:", QTextEdit("A mysterious figure with no past..."))
-        
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         button_layout.addWidget(MaterialButton("Save Changes"))
         layout.addRow(button_layout)
+
+class RainyGlassWidget(QWidget):
+    """A widget that draws an animated, rainy cityscape background."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_drops)
+        self.timer.start(16) # ~60 FPS
+        self.drops = []
+
+    def update_drops(self):
+        # Add new drops
+        if random.randint(0, 5) == 0:
+            self.drops.append({
+                'x': random.randint(0, self.width()),
+                'y': random.randint(0, self.height()),
+                'radius': random.uniform(1, 3),
+                'life': random.randint(100, 300),
+                'streak_len': 0,
+                'streaking': False
+            })
+
+        for drop in self.drops[:]:
+            drop['life'] -= 1
+            if drop['life'] <= 0 and not drop['streaking']:
+                drop['streaking'] = True
+            
+            if drop['streaking']:
+                drop['y'] += 5
+                drop['streak_len'] += 5
+                if drop['y'] - drop['streak_len'] > self.height():
+                    self.drops.remove(drop)
+            
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Background Cityscape Gradient
+        grad = QLinearGradient(0, 0, 0, self.height())
+        grad.setColorAt(0, QColor("#05080d"))
+        grad.setColorAt(0.7, QColor("#10141a"))
+        grad.setColorAt(1, QColor("#1c222b"))
+        painter.fillRect(self.rect(), grad)
+
+        # Raindrops and Streaks
+        for drop in self.drops:
+            alpha = min(255, drop['life'])
+            if drop['streaking']:
+                pen = QPen(QColor(0, 229, 255, alpha // 4), 1)
+                painter.setPen(pen)
+                painter.drawLine(drop['x'], drop['y'] - drop['streak_len'], drop['x'], drop['y'])
+            else:
+                brush = QBrush(QColor(0, 229, 255, alpha // 5))
+                painter.setBrush(brush)
+                painter.setPen(Qt.NoPen)
+                painter.drawEllipse(QPoint(drop['x'], drop['y']), drop['radius'], drop['radius'])
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -244,29 +313,25 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Deco-Futurism UI/UX Demo")
         self.setGeometry(100, 100, 1200, 800)
         
-        # Main Widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
+        
+        self.rain_bg = RainyGlassWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(0,0,0,0)
         main_layout.setSpacing(0)
 
-        # Left Navigation Pane
         left_pane = DecoFrame()
         left_pane.setFixedWidth(350)
         left_pane.setObjectName("leftPane")
         left_layout = QVBoxLayout(left_pane)
         left_layout.setContentsMargins(20, 20, 20, 20)
-
         title_label = QLabel("CASE FILES")
         title_label.setObjectName("paneTitle")
         left_layout.addWidget(title_label)
-
         self.list_widget = QListWidget()
         self.list_widget.setSpacing(10)
         self.list_widget.itemClicked.connect(self.on_item_selected)
-        
-        # Populate with mock data
         mock_items = ["The Crimson Canary", "Case of the Glass Dagger", "Shadows over Neo-Kyoto", "The Archimedes Paradox"]
         for text in mock_items:
             list_item = QListWidgetItem(self.list_widget)
@@ -274,17 +339,13 @@ class MainWindow(QMainWindow):
             item_widget = AnimatedListItem(text)
             self.list_widget.addItem(list_item)
             self.list_widget.setItemWidget(list_item, item_widget)
-            
         left_layout.addWidget(self.list_widget)
 
-        # Right Detail Pane
         self.detail_stack = AnimatedStackedWidget()
         self.placeholder = QLabel("SELECT A CASE FILE")
         self.placeholder.setAlignment(Qt.AlignCenter)
         self.placeholder.setObjectName("placeholderLabel")
-        
         self.detail_card = DetailCard("The Crimson Canary")
-
         self.detail_stack.addWidget(self.placeholder)
         self.detail_stack.addWidget(self.detail_card)
 
@@ -292,6 +353,10 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.detail_stack)
 
         self.apply_stylesheet()
+
+    def resizeEvent(self, event):
+        self.rain_bg.resize(event.size())
+        super().resizeEvent(event)
 
     def on_item_selected(self, item):
         self.detail_stack.setCurrentWidget(self.detail_card)
@@ -301,16 +366,14 @@ class MainWindow(QMainWindow):
             QMainWindow { background-color: #10141a; }
             QWidget { color: #e0e0e0; font-family: 'Roboto', sans-serif; }
             
-            #leftPane { background-color: transparent; border: none; }
+            #leftPane, #detailCard { background-color: rgba(16, 20, 26, 0.85); border: none; }
             #paneTitle { font-size: 24px; font-weight: bold; color: #D4AF37; padding-bottom: 10px; }
-            
-            #detailCard { background-color: rgba(28, 34, 43, 0.8); border: none; }
             #cardTitle { font-size: 20px; font-weight: bold; color: #ffffff; padding-bottom: 10px; }
             
             QListWidget { background-color: transparent; border: none; }
             
             QPushButton, MaterialButton {
-                background-color: #1c222b; border: 1px solid #2c333d;
+                background-color: transparent; border: 1px solid #2c333d;
                 padding: 12px 24px; font-size: 14px; font-weight: bold; border-radius: 8px;
             }
             QPushButton:hover, MaterialButton:hover { background-color: #2c333d; }
