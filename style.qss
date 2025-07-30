@@ -1,0 +1,76 @@
+/* style.qss */
+/* General Window and Widget Styling */
+QWidget {
+    background-color: #10141a; /* Base Charcoal */
+    color: #f0f0f0; /* Off-white for readability */
+    font-family: "Inter", sans-serif;
+    font-size: 14px;
+}
+
+/* Main Window Styling */
+QMainWindow {
+    background-color: #10141a;
+}
+
+/* Headers and Titles */
+QLabel#header {
+    font-family: "Poiret One", sans-serif;
+    color: #D4AF37; /* Gold */
+    font-size: 28px;
+    padding: 10px;
+    border: none;
+}
+
+/* Standard Buttons */
+QPushButton {
+    background-color: #2a2f38;
+    color: #00e5ff; /* Electric Cyan */
+    border: 1px solid #00e5ff;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #00e5ff;
+    color: #10141a;
+}
+
+QPushButton:pressed {
+    background-color: #00b8d4; /* A darker cyan for pressed state */
+}
+
+/* Input Fields */
+QLineEdit, QTextEdit, QSpinBox {
+    background-color: #1a1f25;
+    border: 1px solid #4a4f58;
+    border-radius: 4px;
+    padding: 8px;
+    color: #f0f0f0;
+}
+
+QLineEdit:focus, QTextEdit:focus, QSpinBox:focus {
+    border: 1px solid #00e5ff; /* Cyan glow on focus */
+}
+
+/* Scrollbar Styling */
+QScrollBar:vertical {
+    border: none;
+    background: #1a1f25;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #D4AF37; /* Gold handle */
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}

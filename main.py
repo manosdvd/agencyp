@@ -1,13 +1,8 @@
-# main.py
-# The Agency: A Detective Story Authoring Tool
-# Fusing Holo-Noir aesthetic with Material Design 3 principles and animations.
-
 import sys
 import logging
 import uuid
 import json
 import os
-import shutil
 from dataclasses import asdict, is_dataclass, fields
 from typing import get_args, List, Dict, Any
 
@@ -15,13 +10,14 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QLabel, QLineEdit,
     QTextEdit, QComboBox, QFrame, QSplitter, QStackedWidget, QFormLayout,
-    QGraphicsOpacityEffect, QFileDialog, QInputDialog, QStyledItemDelegate,
-    QGraphicsDropShadowEffect, QTabWidget, QCheckBox
+    QGraphicsDropShadowEffect, QTabWidget, QCheckBox, QGraphicsView,
+    QGraphicsScene, QGraphicsProxyWidget, QGraphicsItem
 )
-from PySide6.QtGui import QIcon, QFont, QColor, QPalette, QPixmap, QPainter, QBrush, QRadialGradient
+from PySide6.QtGui import (
+    QColor, QPixmap, QPainter, QBrush, QPen, QPainterPath
+)
 from PySide6.QtCore import (
-    Qt, QSize, QPropertyAnimation, QEasingCurve, QEvent, Property, Signal, 
-    QTimer, QPoint, QParallelAnimationGroup
+    Qt, QPropertyAnimation, QEasingCurve, Property, QPoint, QPointF, QThread, Signal
 )
 
 # --- Schema Imports ---
@@ -66,6 +62,10 @@ def from_dict_to_dataclass(cls, data):
 
 # --- Data Management ---
 class DataManager:
+    """
+    Abstracts all file I/O. Responsible for reading/writing case files.
+    This would be replaced by a database interaction layer in a production build.
+    """
     def __init__(self, base_path="data"):
         self.base_path = base_path
         self.world_data_path = os.path.join(self.base_path, "world.json")
@@ -101,7 +101,7 @@ class DataManager:
                     with open(path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         case_obj = from_dict_to_dataclass(schemas.CaseFile, data)
-                        cases[case_obj.case_meta.victim] = case_obj # Using victim as a placeholder for case ID
+                        cases[case_obj.case_meta.victim] = case_obj
                 except Exception as e:
                     logger.error(f"Failed to load case file {filename}: {e}")
         return cases
@@ -261,6 +261,430 @@ class MultiSelectComboBox(QComboBox):
                 ids.append(self.itemData(i))
         return ids
 
+# --- Reusable UI Components ---
+class CardWidget(QFrame):
+    """
+    A custom widget that serves as the base for all 'card' elements in the UI.
+    It includes the Art Deco border, shadow, and a Material-style ripple click effect.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setLayout(QVBoxLayout())
+        self.layout().setContentsMargins(20, 20, 20, 20) # Inner padding for content
+
+        # --- Shadow Effect for a "lifted" look ---
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(25)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        shadow.setOffset(0, 3)
+        self.setGraphicsEffect(shadow)
+
+        # --- Ripple Effect Properties ---
+        self._ripple_radius = 0
+        self._ripple_opacity = 0
+        self._ripple_pos = QPoint()
+
+        # --- Set base background color ---
+        self.setAutoFillBackground(True)
+        p = self.palette()
+        p.setColor(self.backgroundRole(), QColor("#1a1f25"))
+        self.setPalette(p)
+
+    # --- Ripple Animation Properties (for QPropertyAnimation) ----
+    @Property(float)
+    def rippleRadius(self):
+        return self._ripple_radius
+
+    @rippleRadius.setter
+    def rippleRadius(self, value):
+        self._ripple_radius = value
+        self.update()  # Trigger a repaint
+
+    @Property(float)
+    def rippleOpacity(self):
+        return self._ripple_opacity
+
+    @rippleOpacity.setter
+    def rippleOpacity(self, value):
+        self._ripple_opacity = value
+        self.update()  # Trigger a repaint
+
+    def mousePressEvent(self, event):
+        # Start the ripple animation on click
+        self._ripple_pos = event.pos()
+        
+        radius_anim = QPropertyAnimation(self, b"rippleRadius")
+        radius_anim.setStartValue(0)
+        radius_anim.setEndValue(self.width() * 0.8)
+        radius_anim.setDuration(400)
+        radius_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        opacity_anim = QPropertyAnimation(self, b"rippleOpacity")
+        opacity_anim.setStartValue(0.4)
+        opacity_anim.setEndValue(0.0)
+        opacity_anim.setDuration(450)
+        
+        radius_anim.start()
+        opacity_anim.start()
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        # Let the base class paint its background first
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # --- Draw Ripple Effect ---
+        if self._ripple_radius > 0:
+            painter.setPen(Qt.NoPen)
+            color = QColor("#00e5ff")  # Cyan ripple
+            color.setAlphaF(self._ripple_opacity)
+            painter.setBrush(QBrush(color))
+            painter.drawEllipse(self._ripple_pos, self._ripple_radius, self._ripple_radius)
+
+        # --- Draw Art Deco Border (on top of everything else) ---
+        pen = QPen(QColor("#D4AF37"))  # Gold color
+        pen.setWidth(2)
+        painter.setPen(pen)
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        painter.drawRect(rect)
+        
+        # Draw geometric corners for the Art Deco feel
+        corner_size = 10
+        painter.drawLine(rect.topLeft(), rect.topLeft() + QPoint(corner_size, 0))
+        painter.drawLine(rect.topLeft(), rect.topLeft() + QPoint(0, corner_size))
+        painter.drawLine(rect.topRight(), rect.topRight() - QPoint(corner_size, 0))
+        painter.drawLine(rect.topRight(), rect.topRight() + QPoint(0, corner_size))
+        painter.drawLine(rect.bottomLeft(), rect.bottomLeft() + QPoint(corner_size, 0))
+        painter.drawLine(rect.bottomLeft(), rect.bottomLeft() - QPoint(0, corner_size))
+        painter.drawLine(rect.bottomRight(), rect.bottomRight() - QPoint(corner_size, 0))
+        painter.drawLine(rect.bottomRight(), rect.bottomRight() - QPoint(0, corner_size))
+
+class CharacterCard(CardWidget):
+    """ An example of how to use the CardWidget to display a character's info. """
+    def __init__(self, character_name, character_archetype, image_path, parent=None):
+        super().__init__(parent)
+        
+        main_layout = QHBoxLayout(self.layout()) # Get the layout from the parent
+        
+        # --- Image Label (Left Side) ---
+        self.image_label = QLabel()
+        self.image_label.setFixedSize(120, 120)
+        self.image_label.setScaledContents(True)
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull():
+             # Provide a fallback placeholder
+             pixmap = QPixmap(120, 120)
+             pixmap.fill(QColor("#2a2f38"))
+        self.image_label.setPixmap(pixmap)
+        self.image_label.setStyleSheet("""
+            QLabel {
+                border: 2px solid #D4AF37; /* Gold border */
+                border-radius: 60px; /* Half of the size for a circle */
+            }
+        """)
+        
+        # --- Info Layout (Right Side) ---
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(5)
+        info_layout.setAlignment(Qt.AlignVCenter)
+        
+        name_label = QLabel(character_name)
+        name_label.setObjectName("header") # Use the header style from QSS
+        name_label.setStyleSheet("font-size: 22px; padding: 0;")
+        
+        archetype_label = QLabel(character_archetype)
+        archetype_label.setStyleSheet("color: #8a8f98; font-style: italic; border: none;")
+        
+        info_layout.addWidget(name_label)
+        info_layout.addWidget(archetype_label)
+        info_layout.addStretch()
+        
+        main_layout.addWidget(self.image_label)
+        main_layout.addLayout(info_layout)
+        
+        self.setMinimumHeight(180)
+
+class CaseMetaCard(CardWidget):
+    def __init__(self, case_meta_obj, parent=None):
+        super().__init__(parent)
+        layout = self.layout()
+        layout.addWidget(QLabel(f"Victim: {case_meta_obj.victim}"))
+        layout.addWidget(QLabel(f"Culprit: {case_meta_obj.culprit}"))
+        layout.addWidget(QLabel(f"Crime Scene: {case_meta_obj.crime_scene}"))
+
+class SuspectCard(CardWidget):
+    def __init__(self, character_obj, parent=None):
+        super().__init__(parent)
+        layout = self.layout()
+        layout.addWidget(QLabel(f"Suspect: {character_obj.full_name}"))
+        layout.addWidget(QLabel(f"Archetype: {character_obj.archetype}"))
+
+class WitnessCard(CardWidget):
+    def __init__(self, character_obj, parent=None):
+        super().__init__(parent)
+        layout = self.layout()
+        layout.addWidget(QLabel(f"Witness: {character_obj.full_name}"))
+        layout.addWidget(QLabel(f"Honesty: {character_obj.honesty}"))
+
+class ClueCard(CardWidget):
+    def __init__(self, clue_obj, parent=None):
+        super().__init__(parent)
+        layout = self.layout()
+        layout.addWidget(QLabel(f"Clue: {clue_obj.clue_summary}"))
+        layout.addWidget(QLabel(f"Source: {clue_obj.source}"))
+
+class CaseLocationCard(CardWidget):
+    def __init__(self, location_obj, parent=None):
+        super().__init__(parent)
+        layout = self.layout()
+        layout.addWidget(QLabel(f"Location: {location_obj.name}"))
+        layout.addWidget(QLabel(f"District: {location_obj.district}"))
+
+
+# --- The Interactive Plot Graph ---
+class ConnectionNode(QGraphicsItem):
+    """Represents a single asset card as a movable node on the graph."""
+    def __init__(self, card_widget, parent=None):
+        super().__init__(parent)
+        self.proxy = QGraphicsProxyWidget(self)
+        self.proxy.setWidget(card_widget)
+        
+        self.setFlags(QGraphicsItem.ItemIsMovable |
+                      QGraphicsItem.ItemIsSelectable |
+                      QGraphicsItem.ItemSendsGeometryChanges)
+        
+        self.sockets = []
+        self.socket_radius = 6
+        self._create_sockets()
+        self.lines = []
+
+    def _create_sockets(self):
+        card_rect = self.proxy.widget().rect()
+        # Sockets are positioned relative to the ConnectionNode's origin
+        self.sockets.append(QPointF(0, card_rect.height() / 2)) # Left
+        self.sockets.append(QPointF(card_rect.width(), card_rect.height() / 2)) # Right
+
+    def boundingRect(self):
+        return self.proxy.boundingRect().adjusted(-self.socket_radius, -self.socket_radius, self.socket_radius, self.socket_radius)
+
+    def paint(self, painter, option, widget=None):
+        painter.setPen(QPen(QColor("#D4AF37"), 2))
+        painter.setBrush(QBrush(QColor("#10141a")))
+        for pos in self.sockets:
+            painter.drawEllipse(pos, self.socket_radius, self.socket_radius)
+            
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            for line in self.lines:
+                line.update_path()
+        return super().itemChange(change, value)
+
+    def get_socket_scene_pos(self, index):
+        if 0 <= index < len(self.sockets):
+            return self.mapToScene(self.sockets[index])
+        return QPointF()
+
+class ConnectionLine(QGraphicsItem):
+    """A curved Bezier line to connect two nodes."""
+    def __init__(self, start_node, start_socket_idx, end_node, end_socket_idx, parent=None):
+        super().__init__(parent)
+        self.start_node = start_node
+        self.start_socket_idx = start_socket_idx
+        self.end_node = end_node
+        self.end_socket_idx = end_socket_idx
+        
+        self.pen = QPen(QColor("#00e5ff"), 2)
+        self.pen.setCapStyle(Qt.RoundCap)
+        
+        self._path = QPainterPath()
+        self.update_path()
+
+    def boundingRect(self):
+        return self._path.boundingRect()
+
+    def update_path(self):
+        self.prepareGeometryChange()
+        start_pos = self.start_node.get_socket_scene_pos(self.start_socket_idx)
+        end_pos = self.end_node.get_socket_scene_pos(self.end_socket_idx)
+        
+        path = QPainterPath()
+        path.moveTo(start_pos)
+        
+        dx = end_pos.x() - start_pos.x()
+        dy = end_pos.y() - start_pos.y()
+        ctrl1 = QPointF(start_pos.x() + dx * 0.5, start_pos.y())
+        ctrl2 = QPointF(start_pos.x() + dx * 0.5, end_pos.y())
+        
+        path.cubicTo(ctrl1, ctrl2, end_pos)
+        self._path = path
+
+    def paint(self, painter, option, widget=None):
+        painter.setPen(self.pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(self._path)
+
+class PlotGraphView(QGraphicsView):
+    """The main view for displaying and interacting with the plot graph."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.scene = QGraphicsScene(self)
+        self.setScene(self.scene)
+        
+        self.setRenderHint(QPainter.Antialiasing)
+        self.setDragMode(QGraphicsView.RubberBandDrag)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        self.scene.setBackgroundBrush(QColor("#10141a"))
+
+    def add_node(self, widget, pos=QPointF(0, 0)):
+        node = ConnectionNode(widget)
+        node.setPos(pos)
+        self.scene.addItem(node)
+        return node
+
+    def connect_nodes(self, start_node, end_node):
+        # Default connection: right socket of start to left socket of end
+        start_socket_idx, end_socket_idx = 1, 0
+        
+        connection = ConnectionLine(start_node, start_socket_idx, end_node, end_socket_idx)
+        self.scene.addItem(connection)
+        
+        # Register the line with the nodes so they can update it on move
+        start_node.lines.append(connection)
+        end_node.lines.append(connection)
+        
+        return connection
+        
+    def wheelEvent(self, event):
+        zoom_in_factor = 1.15
+        zoom_out_factor = 1 / zoom_in_factor
+        
+        if event.angleDelta().y() > 0:
+            self.scale(zoom_in_factor, zoom_in_factor)
+        else:
+            self.scale(zoom_out_factor, zoom_out_factor)
+
+# --- Validator Components ---
+class ValidatorWorker(QThread):
+    validation_finished = Signal(list) # Signal to emit validation results
+
+    def __init__(self, data_manager):
+        super().__init__()
+        self.data_manager = data_manager
+
+    def run(self):
+        results = []
+
+        # --- World Data Validations ---
+        # Check for characters with empty full names
+        for char_id, character in self.data_manager.world_data.characters.items():
+            if not character.full_name:
+                results.append({'message': f"Warning: Character with ID {char_id} has no full name.", 'asset_type': 'characters', 'asset_id': char_id})
+
+        # Check for locations with empty names
+        for loc_id, location in self.data_manager.world_data.locations.items():
+            if not location.name:
+                results.append({'message': f"Warning: Location with ID {loc_id} has no name.", 'asset_type': 'locations', 'asset_id': loc_id})
+
+        # Check for factions with empty names
+        for faction_id, faction in self.data_manager.world_data.factions.items():
+            if not faction.name:
+                results.append({'message': f"Warning: Faction with ID {faction_id} has no name.", 'asset_type': 'factions', 'asset_id': faction_id})
+
+        # Check for items with empty names
+        for item_id, item in self.data_manager.world_data.items.items():
+            if not item.item:
+                results.append({'message': f"Warning: Item with ID {item_id} has no name.", 'asset_type': 'items', 'asset_id': item_id})
+
+        # Check for districts with empty names
+        for district_id, district in self.data_manager.world_data.districts.items():
+            if not district.district_name:
+                results.append({'message': f"Warning: District with ID {district_id} has no name.", 'asset_type': 'districts', 'asset_id': district_id})
+
+        # --- Case Data Validations (Basic Solvability and Deception Integrity) ---
+        for case_id, case_file in self.data_manager.case_files.items():
+            if not case_file.case_meta.victim:
+                results.append({'message': f"Error: Case '{case_id}' has no victim defined.", 'asset_type': 'cases', 'asset_id': case_id})
+            if not case_file.case_meta.culprit:
+                results.append({'message': f"Error: Case '{case_id}' has no culprit defined.", 'asset_type': 'cases', 'asset_id': case_id})
+            if not case_file.case_meta.crime_scene:
+                results.append({'message': f"Warning: Case '{case_id}' has no crime scene defined.", 'asset_type': 'cases', 'asset_id': case_id})
+
+            # Check if Means, Motive, Opportunity clues exist
+            for clue_type in ["means_clue", "motive_clue", "opportunity_clue"]:
+                clue_id = getattr(case_file.case_meta, clue_type)
+                if clue_id and not any(c.clue_id == clue_id for c in case_file.clues):
+                    results.append({'message': f"Error: Case '{case_id}' references a non-existent {clue_type} '{clue_id}'.", 'asset_type': 'clues', 'asset_id': clue_id})
+
+            # Deception Integrity Check
+            for suspect in case_file.key_suspects:
+                for interview in suspect.interviews:
+                    if interview.answer.is_lie and not interview.answer.debunking_clue:
+                        results.append({'message': f"Warning: Suspect '{suspect.character_id}' has a lie without a debunking clue in case '{case_id}'.", 'asset_type': 'characters', 'asset_id': suspect.character_id})
+                    if interview.answer.is_lie and interview.answer.debunking_clue and not any(c.clue_id == interview.answer.debunking_clue for c in case_file.clues):
+                        results.append({'message': f"Error: Suspect '{suspect.character_id}' references a non-existent debunking clue '{interview.answer.debunking_clue}' in case '{case_id}'.", 'asset_type': 'clues', 'asset_id': interview.answer.debunking_clue})
+
+            for location in case_file.locations:
+                for witness in location.witnesses:
+                    for interview in witness.interviews:
+                        if interview.answer.is_lie and not interview.answer.debunking_clue:
+                            results.append({'message': f"Warning: Witness '{witness.character_id}' has a lie without a debunking clue in case '{case_id}'.", 'asset_type': 'characters', 'asset_id': witness.character_id})
+                        if interview.answer.is_lie and interview.answer.debunking_clue and not any(c.clue_id == interview.answer.debunking_clue for c in case_file.clues):
+                            results.append({'message': f"Error: Witness '{witness.character_id}' references a non-existent debunking clue '{interview.answer.debunking_clue}' in case '{case_id}'.", 'asset_type': 'clues', 'asset_id': interview.answer.debunking_clue})
+
+        # Simulate some work to show asynchronicity
+        import time
+        time.sleep(0.5)
+
+        self.validation_finished.emit(results)
+
+class ValidatorPanel(QWidget):
+    issue_selected = Signal(str, str) # asset_type, asset_id
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 10, 10, 10)
+        self.layout.setSpacing(5)
+
+        self.title_label = QLabel("Validation Results")
+        self.title_label.setObjectName("header") # Use QSS header style
+        self.title_label.setStyleSheet("font-size: 18px; padding-bottom: 5px; border-bottom: 1px solid #D4AF37;")
+        self.layout.addWidget(self.title_label)
+
+        self.results_list = QListWidget()
+        self.results_list.setStyleSheet("background-color: #1a1f25; border: 1px solid #4a4f58; border-radius: 4px;")
+        self.layout.addWidget(self.results_list)
+
+    def update_results(self, results):
+        self.results_list.clear()
+        if not results:
+            self.results_list.addItem("No issues found. All clear!")
+            self.results_list.setStyleSheet("color: #00e5ff; background-color: #1a1f25; border: 1px solid #4a4f58; border-radius: 4px;")
+        else:
+            for result in results:
+                item_widget = QWidget()
+                item_layout = QHBoxLayout(item_widget)
+                item_layout.setContentsMargins(0,0,0,0)
+                
+                message_label = QLabel(result['message'])
+                message_label.setStyleSheet("border: none;")
+                item_layout.addWidget(message_label)
+
+                if result.get('asset_type') and result.get('asset_id'):
+                    go_to_button = QPushButton("Go to Issue")
+                    go_to_button.setStyleSheet("padding: 2px 5px; font-size: 12px; border-radius: 4px; background-color: #2a2f38; color: #00e5ff;")
+                    go_to_button.clicked.connect(lambda checked, at=result['asset_type'], aid=result['asset_id']: self.issue_selected.emit(at, aid))
+                    item_layout.addWidget(go_to_button)
+
+                list_item = QListWidgetItem(self.results_list)
+                list_item.setSizeHint(item_widget.sizeHint())
+                self.results_list.addItem(list_item)
+                self.results_list.setItemWidget(list_item, item_widget)
+                list_item.setForeground(QColor("#FF6B6B")) # Red color for warnings/errors
+            self.results_list.setStyleSheet("color: #FF6B6B; background-color: #1a1f25; border: 1px solid #4a4f58; border-radius: 4px;")
+
 # --- World Builder ---
 
 class WorldBuilder(QWidget):
@@ -322,6 +746,8 @@ class WorldBuilder(QWidget):
                 view = AssetListView(asset_type, self.data_manager.world_data.items, ItemDetailView, self.data_manager)
             elif asset_type == "districts":
                 view = AssetListView(asset_type, self.data_manager.world_data.districts, DistrictDetailView, self.data_manager)
+            elif asset_type == "sleuth":
+                view = SleuthDetailView(self.data_manager.world_data.sleuth, self.data_manager.save_world_data, self.data_manager)
 
             if view:
                 self.asset_views[asset_type] = view
@@ -376,6 +802,14 @@ class AssetListView(QWidget):
             item = QListWidgetItem(name)
             item.setData(Qt.UserRole, asset_id)
             self.asset_list_widget.addItem(item)
+
+    def select_asset_by_id(self, asset_id):
+        for i in range(self.asset_list_widget.count()):
+            item = self.asset_list_widget.item(i)
+            if item.data(Qt.UserRole) == asset_id:
+                self.asset_list_widget.setCurrentItem(item)
+                self.on_asset_selected(item)
+                break
 
     def add_new_asset(self):
         singular_asset_type = self.asset_type[:-1]
@@ -956,24 +1390,409 @@ class DistrictDetailView(QFrame):
         self.district.dominant_faction = self.dominant_faction_combo.currentData()
         self.on_save()
 
-# --- Case Builder ---
+class SleuthDetailView(QFrame):
+    def __init__(self, sleuth_obj, on_save, data_manager):
+        super().__init__()
+        self.sleuth = sleuth_obj
+        self.on_save = on_save
+        self.data_manager = data_manager
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(20, 20, 20, 20)
+        
+        self.form_layout = QFormLayout()
+        self.layout.addLayout(self.form_layout)
+
+        self.full_name_field = QLineEdit(self.sleuth.full_name)
+        self.city_field = QLineEdit(self.sleuth.city)
+        self.primary_arc_field = DynamicHeightTextEdit(self.sleuth.primary_arc)
+
+        self.form_layout.addRow("Full Name:", self.full_name_field)
+        self.form_layout.addRow("City:", self.city_field)
+        self.form_layout.addRow("Primary Arc:", self.primary_arc_field)
+
+        self.save_button = MaterialButton("Save Sleuth")
+        self.save_button.clicked.connect(self.save)
+        self.layout.addWidget(self.save_button, alignment=Qt.AlignRight)
+
+    def save(self):
+        self.sleuth.full_name = self.full_name_field.text()
+        self.sleuth.city = self.city_field.text()
+        self.sleuth.primary_arc = self.primary_arc_field.toPlainText()
+        self.on_save()
 
 class CaseBuilder(QWidget):
     def __init__(self, data_manager):
         super().__init__()
         self.data_manager = data_manager
-        layout = QVBoxLayout(self)
-        label = QLabel("Case Builder - Coming Soon")
-        label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(label)
+        self.main_layout = QVBoxLayout(self)
+
+        self.case_selector = QComboBox()
+        self.case_selector.addItem("Select a Case", None)
+        self.case_selector.currentIndexChanged.connect(self.load_selected_case)
+        self.main_layout.addWidget(self.case_selector)
+
+        self.new_case_button = MaterialButton("+ New Case")
+        self.new_case_button.clicked.connect(self.create_new_case)
+        self.main_layout.addWidget(self.new_case_button)
+
+        self.plot_graph_view = PlotGraphView()
+        self.main_layout.addWidget(self.plot_graph_view)
+
+        self.populate_case_selector()
+
+    def create_new_case(self):
+        case_name, ok = QInputDialog.getText(self, "New Case", "Enter a name for the new case (e.g., Victim's Name):")
+        if ok and case_name:
+            new_case = schemas.CaseFile()
+            new_case.case_meta.victim = case_name # Use victim as the case ID for now
+            self.data_manager.save_case(new_case)
+            self.populate_case_selector()
+            # Select the newly created case
+            index = self.case_selector.findData(case_name)
+            if index != -1:
+                self.case_selector.setCurrentIndex(index)
+
+    def populate_case_selector(self):
+        self.case_selector.blockSignals(True) # Block signals to prevent load_selected_case from firing during population
+        self.case_selector.clear()
+        self.case_selector.addItem("Select a Case", None)
+        for case_id, case_obj in self.data_manager.case_files.items():
+            self.case_selector.addItem(case_obj.case_meta.victim or case_id, case_id)
+        self.case_selector.blockSignals(False)
+
+    def load_selected_case(self, index):
+        case_id = self.case_selector.itemData(index)
+        self.plot_graph_view.scene.clear() # Clear existing nodes
+
+        if case_id:
+            case_file = self.data_manager.case_files.get(case_id)
+            if case_file:
+                # Add Case Meta Node
+                case_meta_card = CaseMetaCard(case_file.case_meta)
+                self.plot_graph_view.add_node(case_meta_card, QPointF(0, 0))
+
+                # Add Suspects
+                x_offset = -300
+                y_offset = 100
+                for suspect_id in case_file.key_suspects:
+                    character = self.data_manager.world_data.characters.get(suspect_id)
+                    if character:
+                        suspect_card = SuspectCard(character)
+                        self.plot_graph_view.add_node(suspect_card, QPointF(x_offset, y_offset))
+                        y_offset += 150
+
+                # Add Witnesses
+                x_offset = 300
+                y_offset = 100
+                for witness_id in case_file.key_witnesses:
+                    character = self.data_manager.world_data.characters.get(witness_id)
+                    if character:
+                        witness_card = WitnessCard(character)
+                        self.plot_graph_view.add_node(witness_card, QPointF(x_offset, y_offset))
+                        y_offset += 150
+
+                # Add Clues
+                x_offset = 0
+                y_offset = -200
+                for clue_obj in case_file.clues:
+                    clue_card = ClueCard(clue_obj)
+                    self.plot_graph_view.add_node(clue_card, QPointF(x_offset, y_offset))
+                    x_offset += 200
+
+                # Add Case Locations
+                x_offset = -200
+                y_offset = -300
+                for loc_id in case_file.case_locations:
+                    location = self.data_manager.world_data.locations.get(loc_id)
+                    if location:
+                        loc_card = CaseLocationCard(location)
+                        self.plot_graph_view.add_node(loc_card, QPointF(x_offset, y_offset))
+                        x_offset += 200
+
+class CaseLocationCard(CardWidget):
+    def __init__(self, location_obj, parent=None):
+        super().__init__(parent)
+        layout = self.layout()
+        layout.addWidget(QLabel(f"Location: {location_obj.name}"))
+        layout.addWidget(QLabel(f"District: {location_obj.district}"))
+
+class CaseMetaDetailView(QFrame):
+    def __init__(self, case_meta_obj, on_save, data_manager):
+        super().__init__()
+        self.case_meta = case_meta_obj
+        self.on_save = on_save
+        self.data_manager = data_manager
+
+        self.layout = QFormLayout(self)
+        self.layout.setContentsMargins(20, 20, 20, 20)
+
+        self.victim_field = QLineEdit(self.case_meta.victim)
+        self.culprit_field = QLineEdit(self.case_meta.culprit)
+        self.crime_scene_field = QLineEdit(self.case_meta.crime_scene)
+        self.murder_weapon_field = QLineEdit(self.case_meta.murder_weapon)
+        self.murder_weapon_hidden_checkbox = QCheckBox("Murder Weapon Hidden")
+        self.murder_weapon_hidden_checkbox.setChecked(self.case_meta.murder_weapon_hidden)
+        self.means_clue_field = QLineEdit(self.case_meta.means_clue)
+        self.motive_clue_field = QLineEdit(self.case_meta.motive_clue)
+        self.opportunity_clue_field = QLineEdit(self.case_meta.opportunity_clue)
+        self.red_herring_clues_field = DynamicHeightTextEdit("\n".join(self.case_meta.red_herring_clues or []))
+        self.narrative_viewpoint_combo = QComboBox()
+        self.narrative_viewpoint_combo.addItems(["_"] + list(get_args(schemas.NarrativeViewpoint)))
+        self.narrative_viewpoint_combo.setCurrentText(self.case_meta.narrative_viewpoint or "_")
+        self.narrative_tense_combo = QComboBox()
+        self.narrative_tense_combo.addItems(["_"] + list(get_args(schemas.NarrativeTense)))
+        self.narrative_tense_combo.setCurrentText(self.case_meta.narrative_tense or "_")
+        self.core_mystery_solution_details_field = DynamicHeightTextEdit(self.case_meta.core_mystery_solution_details)
+        self.ultimate_reveal_scene_description_field = DynamicHeightTextEdit(self.case_meta.ultimate_reveal_scene_description)
+        self.opening_monologue_field = DynamicHeightTextEdit(self.case_meta.opening_monologue)
+        self.successful_denouement_field = DynamicHeightTextEdit(self.case_meta.successful_denouement)
+        self.failed_denouement_field = DynamicHeightTextEdit(self.case_meta.failed_denouement)
+
+        self.layout.addRow("Victim:", self.victim_field)
+        self.layout.addRow("Culprit:", self.culprit_field)
+        self.layout.addRow("Crime Scene:", self.crime_scene_field)
+        self.layout.addRow("Murder Weapon:", self.murder_weapon_field)
+        self.layout.addRow(self.murder_weapon_hidden_checkbox)
+        self.layout.addRow("Means Clue:", self.means_clue_field)
+        self.layout.addRow("Motive Clue:", self.motive_clue_field)
+        self.layout.addRow("Opportunity Clue:", self.opportunity_clue_field)
+        self.layout.addRow("Red Herring Clues:", self.red_herring_clues_field)
+        self.layout.addRow("Narrative Viewpoint:", self.narrative_viewpoint_combo)
+        self.layout.addRow("Narrative Tense:", self.narrative_tense_combo)
+        self.layout.addRow("Core Mystery Solution Details:", self.core_mystery_solution_details_field)
+        self.layout.addRow("Ultimate Reveal Scene Description:", self.ultimate_reveal_scene_description_field)
+        self.layout.addRow("Opening Monologue:", self.opening_monologue_field)
+        self.layout.addRow("Successful Denouement:", self.successful_denouement_field)
+        self.layout.addRow("Failed Denouement:", self.failed_denouement_field)
+
+        self.save_button = MaterialButton("Save Case Meta")
+        self.save_button.clicked.connect(self.save)
+        self.layout.addWidget(self.save_button, alignment=Qt.AlignRight)
+
+    def save(self):
+        self.case_meta.victim = self.victim_field.text()
+        self.case_meta.culprit = self.culprit_field.text()
+        self.case_meta.crime_scene = self.crime_scene_field.text()
+        self.case_meta.murder_weapon = self.murder_weapon_field.text()
+        self.case_meta.murder_weapon_hidden = self.murder_weapon_hidden_checkbox.isChecked()
+        self.case_meta.means_clue = self.means_clue_field.text()
+        self.case_meta.motive_clue = self.motive_clue_field.text()
+        self.case_meta.opportunity_clue = self.opportunity_clue_field.text()
+        self.case_meta.red_herring_clues = [c for c in self.red_herring_clues_field.toPlainText().splitlines() if c]
+        self.case_meta.narrative_viewpoint = self.narrative_viewpoint_combo.currentText() if self.narrative_viewpoint_combo.currentText() != "_" else None
+        self.case_meta.narrative_tense = self.narrative_tense_combo.currentText() if self.narrative_tense_combo.currentText() != "_" else None
+        self.case_meta.core_mystery_solution_details = self.core_mystery_solution_details_field.toPlainText()
+        self.case_meta.ultimate_reveal_scene_description = self.ultimate_reveal_scene_description_field.toPlainText()
+        self.case_meta.opening_monologue = self.opening_monologue_field.toPlainText()
+        self.case_meta.successful_denouement = self.successful_denouement_field.toPlainText()
+        self.case_meta.failed_denouement = self.failed_denouement_field.toPlainText()
+        self.on_save()
+
+
+# --- The Interactive Plot Graph ---
+class ConnectionNode(QGraphicsItem):
+    """Represents a single asset card as a movable node on the graph."""
+    def __init__(self, card_widget, parent=None):
+        super().__init__(parent)
+        self.proxy = QGraphicsProxyWidget(self)
+        self.proxy.setWidget(card_widget)
+        
+        self.setFlags(QGraphicsItem.ItemIsMovable |
+                      QGraphicsItem.ItemIsSelectable |
+                      QGraphicsItem.ItemSendsGeometryChanges)
+        
+        self.sockets = []
+        self.socket_radius = 6
+        self._create_sockets()
+        self.lines = []
+
+    def _create_sockets(self):
+        card_rect = self.proxy.widget().rect()
+        # Sockets are positioned relative to the ConnectionNode's origin
+        self.sockets.append(QPointF(0, card_rect.height() / 2)) # Left
+        self.sockets.append(QPointF(card_rect.width(), card_rect.height() / 2)) # Right
+
+    def boundingRect(self):
+        return self.proxy.boundingRect().adjusted(-self.socket_radius, -self.socket_radius, self.socket_radius, self.socket_radius)
+
+    def paint(self, painter, option, widget=None):
+        painter.setPen(QPen(QColor("#D4AF37"), 2))
+        painter.setBrush(QBrush(QColor("#10141a")))
+        for pos in self.sockets:
+            painter.drawEllipse(pos, self.socket_radius, self.socket_radius)
+            
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            for line in self.lines:
+                line.update_path()
+        return super().itemChange(change, value)
+
+    def get_socket_scene_pos(self, index):
+        if 0 <= index < len(self.sockets):
+            return self.mapToScene(self.sockets[index])
+        return QPointF()
+
+class ConnectionLine(QGraphicsItem):
+    """A curved Bezier line to connect two nodes."""
+    def __init__(self, start_node, start_socket_idx, end_node, end_socket_idx, parent=None):
+        super().__init__(parent)
+        self.start_node = start_node
+        self.start_socket_idx = start_socket_idx
+        self.end_node = end_node
+        self.end_socket_idx = end_socket_idx
+        
+        self.pen = QPen(QColor("#00e5ff"), 2)
+        self.pen.setCapStyle(Qt.RoundCap)
+        
+        self._path = QPainterPath()
+        self.update_path()
+
+    def boundingRect(self):
+        return self._path.boundingRect()
+
+    def update_path(self):
+        self.prepareGeometryChange()
+        start_pos = self.start_node.get_socket_scene_pos(self.start_socket_idx)
+        end_pos = self.end_node.get_socket_scene_pos(self.end_socket_idx)
+        
+        path = QPainterPath()
+        path.moveTo(start_pos)
+        
+        dx = end_pos.x() - start_pos.x()
+        dy = end_pos.y() - start_pos.y()
+        ctrl1 = QPointF(start_pos.x() + dx * 0.5, start_pos.y())
+        ctrl2 = QPointF(start_pos.x() + dx * 0.5, end_pos.y())
+        
+        path.cubicTo(ctrl1, ctrl2, end_pos)
+        self._path = path
+
+    def paint(self, painter, option, widget=None):
+        painter.setPen(self.pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(self._path)
+
+class PlotGraphView(QGraphicsView):
+    """The main view for displaying and interacting with the plot graph."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.scene = QGraphicsScene(self)
+        self.setScene(self.scene)
+        
+        self.setRenderHint(QPainter.Antialiasing)
+        self.setDragMode(QGraphicsView.RubberBandDrag)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        self.scene.setBackgroundBrush(QColor("#10141a"))
+
+    def add_node(self, widget, pos=QPointF(0, 0)):
+        node = ConnectionNode(widget)
+        node.setPos(pos)
+        self.scene.addItem(node)
+        return node
+
+    def connect_nodes(self, start_node, end_node):
+        # Default connection: right socket of start to left socket of end
+        start_socket_idx, end_socket_idx = 1, 0
+        
+        connection = ConnectionLine(start_node, start_socket_idx, end_node, end_socket_idx)
+        self.scene.addItem(connection)
+        
+        # Register the line with the nodes so they can update it on move
+        start_node.lines.append(connection)
+        end_node.lines.append(connection)
+        
+        return connection
+        
+    def wheelEvent(self, event):
+        zoom_in_factor = 1.15
+        zoom_out_factor = 1 / zoom_in_factor
+        
+        if event.angleDelta().y() > 0:
+            self.scale(zoom_in_factor, zoom_in_factor)
+        else:
+            self.scale(zoom_out_factor, zoom_out_factor)
+
+# --- Validator Components ---
+class ValidatorWorker(QThread):
+    validation_finished = Signal(list) # Signal to emit validation results
+
+    def __init__(self, data_manager):
+        super().__init__()
+        self.data_manager = data_manager
+
+    def run(self):
+        results = []
+
+        # --- World Data Validations ---
+        # Check for characters with empty full names
+        for char_id, character in self.data_manager.world_data.characters.items():
+            if not character.full_name:
+                results.append({'message': f"Warning: Character with ID {char_id} has no full name. (World Data)", 'asset_type': 'characters', 'asset_id': char_id})
+
+        # Check for locations with empty names
+        for loc_id, location in self.data_manager.world_data.locations.items():
+            if not location.name:
+                results.append({'message': f"Warning: Location with ID {loc_id} has no name. (World Data)", 'asset_type': 'locations', 'asset_id': loc_id})
+
+        # Check for factions with empty names
+        for faction_id, faction in self.data_manager.world_data.factions.items():
+            if not faction.name:
+                results.append({'message': f"Warning: Faction with ID {faction_id} has no name. (World Data)", 'asset_type': 'factions', 'asset_id': faction_id})
+
+        # Check for items with empty names
+        for item_id, item in self.data_manager.world_data.items.items():
+            if not item.item:
+                results.append({'message': f"Warning: Item with ID {item_id} has no name. (World Data)", 'asset_type': 'items', 'asset_id': item_id})
+
+        # Check for districts with empty names
+        for district_id, district in self.data_manager.world_data.districts.items():
+            if not district.district_name:
+                results.append({'message': f"Warning: District with ID {district_id} has no name. (World Data)", 'asset_type': 'districts', 'asset_id': district_id})
+
+        # --- Case Data Validations (Basic Solvability and Deception Integrity) ---
+        for case_id, case_file in self.data_manager.case_files.items():
+            # Core Solvability Check
+            if not case_file.case_meta.victim:
+                results.append({'message': f"Error: Case '{case_id}' has no victim defined.", 'asset_type': 'cases', 'asset_id': case_id})
+            if not case_file.case_meta.culprit:
+                results.append({'message': f"Error: Case '{case_id}' has no culprit defined.", 'asset_type': 'cases', 'asset_id': case_id})
+            if not case_file.case_meta.crime_scene:
+                results.append({'message': f"Warning: Case '{case_id}' has no crime scene defined.", 'asset_type': 'cases', 'asset_id': case_id})
+
+            # Check if Means, Motive, Opportunity clues exist
+            for clue_type in ["means_clue", "motive_clue", "opportunity_clue"]:
+                clue_id = getattr(case_file.case_meta, clue_type)
+                if clue_id and not any(c.clue_id == clue_id for c in case_file.clues):
+                    results.append({'message': f"Error: Case '{case_id}' references a non-existent {clue_type} '{clue_id}'.", 'asset_type': 'clues', 'asset_id': clue_id})
+
+            # Deception Integrity Check
+            for suspect in case_file.key_suspects:
+                for interview in suspect.interviews:
+                    if interview.answer.is_lie and not interview.answer.debunking_clue:
+                        results.append({'message': f"Warning: Suspect '{suspect.character_id}' has a lie without a debunking clue in case '{case_id}'.", 'asset_type': 'characters', 'asset_id': suspect.character_id})
+                    if interview.answer.is_lie and interview.answer.debunking_clue and not any(c.clue_id == interview.answer.debunking_clue for c in case_file.clues):
+                        results.append({'message': f"Error: Suspect '{suspect.character_id}' references a non-existent debunking clue '{interview.answer.debunking_clue}' in case '{case_id}'.", 'asset_type': 'clues', 'asset_id': interview.answer.debunking_clue})
+
+            for location in case_file.locations:
+                for witness in location.witnesses:
+                    for interview in witness.interviews:
+                        if interview.answer.is_lie and not interview.answer.debunking_clue:
+                            results.append({'message': f"Warning: Witness '{witness.character_id}' has a lie without a debunking clue in case '{case_id}'.", 'asset_type': 'characters', 'asset_id': witness.character_id})
+                        if interview.answer.is_lie and interview.answer.debunking_clue and not any(c.clue_id == interview.answer.debunking_clue for c in case_file.clues):
+                            results.append({'message': f"Error: Witness '{witness.character_id}' references a non-existent debunking clue '{interview.answer.debunking_clue}' in case '{case_id}'.", 'asset_type': 'clues', 'asset_id': interview.answer.debunking_clue})
+
+        # Simulate some work to show asynchronicity
+        import time
+        time.sleep(0.5)
+
+        self.validation_finished.emit(results)
 
 # --- Main Window ---
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("The Agency")
-        self.setGeometry(100, 100, 1400, 900)
+        self.setWindowTitle("The Agency Case Builder")
         self.data_manager = DataManager()
 
         self.central_widget = QWidget()
@@ -989,48 +1808,70 @@ class MainWindow(QMainWindow):
         self.main_tabs.addTab(self.world_builder, "World Builder")
         self.main_tabs.addTab(self.case_builder, "Case Builder")
 
-        self.apply_holo_noir_style()
+        # Validator Panel
+        self.validator_panel = ValidatorPanel()
+        self.main_layout.addWidget(self.validator_panel)
 
-    def apply_holo_noir_style(self):
-        self.setStyleSheet("""
-            QMainWindow { background-color: #10141a; }
-            QWidget { color: #e0e0e0; font-family: 'Roboto', sans-serif; font-size: 14px; }
-            
-            #navBar { background-color: #1c222b; border-right: 1px solid #2c333d; }
-            
-            QTabWidget::pane { border: none; }
-            QTabBar::tab {
-                background: #1c222b; color: #a0a0a0;
-                padding: 12px 20px; font-size: 16px; font-weight: bold;
-            }
-            QTabBar::tab:selected { background: #10141a; color: #00e5ff; }
-            QTabBar::tab:hover { background: #2c333d; }
+        # Validator Worker
+        self.validator_worker = ValidatorWorker(self.data_manager)
+        self.validator_worker.validation_finished.connect(self.validator_panel.update_results)
+        self.validator_panel.issue_selected.connect(self.go_to_asset)
+        self.validator_worker.start() # Start validation on app launch
 
-            QPushButton, MaterialButton {
-                background-color: transparent; border: 1px solid #2c333d;
-                padding: 8px 16px; font-size: 14px; border-radius: 8px;
-            }
-            QPushButton:hover, MaterialButton:hover { background-color: #2c333d; }
-            QPushButton:pressed, MaterialButton:pressed { background-color: #00e5ff; color: #10141a; }
-            QPushButton:checked, MaterialButton:checked { background-color: #00e5ff; color: #10141a; border: 1px solid #00e5ff; }
+    def go_to_asset(self, asset_type, asset_id):
+        # Switch to World Builder tab
+        self.main_tabs.setCurrentWidget(self.world_builder)
 
-            QLineEdit, QTextEdit, QComboBox {
-                background-color: #2c333d; border: none; border-radius: 8px;
-                padding: 12px; font-size: 14px;
-            }
-            QLineEdit:focus, QTextEdit:focus, QComboBox:focus { background-color: #3c444d; }
-            
-            QSplitter::handle { background-color: #2c333d; }
-            QSplitter::handle:horizontal { width: 1px; }
+        # Set the correct asset view in WorldBuilder
+        self.world_builder.set_asset_view(asset_type)
 
-            QListWidget { background-color: transparent; border: none; }
-            QListWidget::item { padding: 12px; border-radius: 8px; }
-            QListWidget::item:hover { background-color: #2c333d; }
-            QListWidget::item:selected { background-color: #00e5ff; color: #10141a; font-weight: bold; }
-        """)
+        # Select the specific asset in the AssetListView
+        if asset_type in self.world_builder.asset_views:
+            asset_list_view = self.world_builder.asset_views[asset_type]
+            asset_list_view.select_asset_by_id(asset_id)
+
+def main():
+    """
+    Initializes the Qt Application and the main window.
+    """
+    app = QApplication(sys.argv)
+
+    # Load the global stylesheet
+    try:
+        with open("style.qss", "r") as f:
+            app.setStyleSheet(f.read())
+        print("Stylesheet 'style.qss' loaded successfully.")
+    except FileNotFoundError:
+        print("Warning: style.qss not found. Using default styles.")
+
+    main_window = MainWindow()
+    main_window.resize(1200, 800)
+    main_window.show()
+
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
+    main()
+
+def main():
+    """
+    Initializes the Qt Application and the main window.
+    """
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
+
+    # Load the global stylesheet
+    try:
+        with open("style.qss", "r") as f:
+            app.setStyleSheet(f.read())
+        print("Stylesheet 'style.qss' loaded successfully.")
+    except FileNotFoundError:
+        print("Warning: style.qss not found. Using default styles.")
+
+    main_window = MainWindow()
+    main_window.resize(1200, 800)
+    main_window.show()
+
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
