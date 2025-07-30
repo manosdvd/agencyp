@@ -1,6 +1,24 @@
 {
     "districts": {},
-    "locations": {},
+    "locations": {
+        "location_f860eced": {
+            "location_id": "location_f860eced",
+            "name": "New Location",
+            "type": "",
+            "description": "",
+            "district": null,
+            "owning_faction": null,
+            "danger_level": null,
+            "population": null,
+            "image": null,
+            "key_characters": [],
+            "associated_items": [],
+            "accessibility": null,
+            "hidden": false,
+            "clues": [],
+            "internal_logic_notes": ""
+        }
+    },
     "factions": {},
     "characters": {
         "character_4406d28a": {
